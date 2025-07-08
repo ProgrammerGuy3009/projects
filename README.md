@@ -30,23 +30,37 @@
 
 ### 🧍 Face Recognition Screen  
 Capture live video, recognize faces, and mark attendance.  
-📸 *Screenshot Placeholder – Face Recognition Screen*  
-☰ *Screenshot Placeholder – Sidebar Navigation*
+![image](https://github.com/user-attachments/assets/ff0ab390-3323-4cfc-9c35-ecdb9fd2716a)
+![image](https://github.com/user-attachments/assets/a6d3e13a-a442-4725-9c88-d0d7be0eaf16)
+📸 * – Face Recognition Screen*  
+
+![image](https://github.com/user-attachments/assets/05a0292f-1858-4b9b-a12c-3b67ec96f9c2)
+☰ * – Sidebar Navigation*
 
 ---
 
 ### 📈 Dashboard  
 See real-time stats: top performers, heatmaps, daily rates, and more.  
-📊 *Screenshot Placeholder – Dashboard Overview*  
-📈 *Screenshot Placeholder – Attendance Graphs*  
-🗂️ *Screenshot Placeholder – Attendance Records*  
-🧯 *Screenshot Placeholder – Edit Attendance Section*
+
+![image](https://github.com/user-attachments/assets/5f1575a8-b86a-474c-8f49-f53c093ec172)
+📊 * – Dashboard Overview*
+
+![image](https://github.com/user-attachments/assets/4a7d773e-f69f-4cb3-a612-e3aa2cfbfc2f)
+📈 * – Attendance Graphs*  
+
+![image](https://github.com/user-attachments/assets/1c7ca6c4-b7fc-4fb2-acf4-6519710908bf)
+🗂️ * – Attendance Records*  
+
+![image](https://github.com/user-attachments/assets/a96746c1-2586-4c04-8070-f247fb0719dc)
+🧯 * – Edit Attendance Section*
 
 ---
 
 ### ➕ Add Student  
 Add a new student by entering details and uploading or capturing a face.  
-🧑‍🎓 *Screenshot Placeholder – Add Student Screen*
+
+![image](https://github.com/user-attachments/assets/6d3af584-a6f6-4b1d-b3e7-071be57e6e12)
+🧑‍🎓 * – Add Student Screen*
 
 ---
 
