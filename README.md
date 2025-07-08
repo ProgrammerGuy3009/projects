@@ -93,7 +93,7 @@ The development of *CognitoAI – A Facial Recognition-Based Attendance System* 
 
 ---
 
-### 👨‍💻 Akshay Maurya  
+### 👨‍💻 [Akshay Maurya](https://github.com/AkshayMaurya12)
 **Role:** Backend Developer, Database Architect, and **Dashboard Designer**  
 **Key Contributions:**
 
