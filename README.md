@@ -112,7 +112,7 @@ The development of *CognitoAI – A Facial Recognition-Based Attendance System* 
 
 ---
 
-### 📷 Prasoon  
+### 📷 [Prasoon Tripathi](https://github.com/ProgrammerGuy3009) 
 **Role:** ML Engineer, Camera Module Specialist, and Lead Frontend Developer  
 **Key Contributions:**
 
