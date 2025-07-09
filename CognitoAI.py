@@ -1,175 +1,107 @@
-from kivy.lang import Builder
-from kivy.uix.screenmanager import ScreenManager, Screen
 from kivymd.app import MDApp
-from kivymd.toast import toast
-from kivymd.uix.tab import MDTabsBase
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.datatables import MDDataTable
-from kivymd.uix.dialog import MDDialog
-from kivymd.uix.button import MDRaisedButton, MDFlatButton
-from kivymd.uix.textfield import MDTextField
-from kivymd.uix.card import MDCard
-from kivy.metrics import dp
+from kivymd.uix.button import MDIconButton
+from kivy.lang import Builder
 from kivy.uix.image import Image
-from kivy.clock import Clock
-from plyer import filechooser
-from kivy.graphics.texture import Texture
-from datetime import date
-import cv2
-import face_recognition
-import numpy as np
-import mysql.connector
-import os
-from datetime import datetime, timedelta
-import seaborn as sns
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend for Matplotlib
-import matplotlib.pyplot as plt
-from io import BytesIO
-from kivy.core.image import Image as CoreImage
-import pandas as pd
+from kivy.uix.screenmanager import ScreenManager, Screen
 from kivymd.uix.label import MDLabel
-from kivymd.uix.toolbar import MDTopAppBar
-from kivymd.uix.pickers import MDDatePicker
-from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDIconButton
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.screen import MDScreen
+from kivymd.uix.dialog import MDDialog
+from kivymd.toast import toast
+from kivy.clock import Clock
+from kivy.graphics.texture import Texture
+from plyer import filechooser
+from kivy.uix.filechooser import FileChooserIconView
+import mysql.connector
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+import cv2
+import numpy as np
+import face_recognition
+import os
+from datetime import date, datetime
+from kivymd.uix.button import MDFlatButton, MDRaisedButton
+from kivymd.uix.textfield import MDTextField
+from kivy.uix.boxlayout import BoxLayout
+from kivy.core.window import Window
+from kivy.uix.popup import Popup
+from kivymd.uix.pickers import MDDatePicker
+from kivymd.uix.dropdownitem import MDDropDownItem
+from kivymd.uix.card import MDCard
+from kivymd.uix.menu import MDDropdownMenu
+import io
+from kivy.uix.image import CoreImage
+from PIL import Image as PILImage
+import pandas as pd
+import pickle
 
-class MainScreen(MDScreen):
+Window.size = (800, 600)
+
+class FaceRecognitionScreen(Screen):
+    pass
+
+class DashboardScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.start_date = None
+        self.end_date = None
+        self.selected_student = None
+        self.selected_course = None
+        self.selected_attendance_range = None
+
+class MainScreen(Screen):
     pass
 
 
-# Initialize Database Connection
-def get_db_connection():
-    try:
-        return mysql.connector.connect(
-            host="localhost",
-            user="root",
-            password="0000",  # Replace with your MySQL password
-            database="cognitoai"
-        )
-    except mysql.connector.Error as err:
-        print(f"Database connection error: {err}")
-        return None
-
-# Create necessary auxiliary functions to handle the existing database structure
-
-def verify_database_consistency():
-    """
-    Verify that the database tables match expected structure and if not, 
-    make necessary adjustments to work with existing structure.
-    """
-    db = get_db_connection()
-    if not db:
-        return False
-    try:
-        cursor = db.cursor()
-        # Check tables exist
-        cursor.execute("SHOW TABLES")
-        tables = [table[0].lower() for table in cursor.fetchall()]
-        
-        print(f"Available tables: {tables}")
-        
-        # Check student table structure
-        if 'student_info' in tables:
-            cursor.execute("DESCRIBE student_info")
-            columns = {column[0].lower(): column for column in cursor.fetchall()}
-            print(f"student_info columns: {columns.keys()}")
-            
-            # Check if face_id column exists in student_info
-            if 'face_id' not in columns:
-                print("Adding face_id column to student_info table")
-                cursor.execute("ALTER TABLE student_info ADD COLUMN face_id BLOB")
-                db.commit()
-                
-        # Check attendance table structure
-        if 'attendance' in tables:
-            cursor.execute("DESCRIBE attendance")
-            columns = {column[0].lower(): column for column in cursor.fetchall()}
-            print(f"attendance columns: {columns.keys()}")
-            
-            # Check if status field is present (in our schema it's 'attendance')
-            # We'll handle this in our SQL queries
-            
-        return True
-    except mysql.connector.Error as err:
-        print(f"Error verifying database: {err}")
-        return False
-    finally:
-        cursor.close()
-        db.close()
-
-# Load Known Faces from the existing database structure
-def load_known_faces():
-    known_face_encodings = []
-    known_names = []
-    known_roll_nos = []
-    db = get_db_connection()
-    if not db:
-        return [], [], []
-    try:
-        cursor = db.cursor()
-        cursor.execute("SELECT roll_no, name, face_id FROM student_info WHERE face_id IS NOT NULL")
-        for roll_no, name, face_encoding_blob in cursor.fetchall():
-            if face_encoding_blob:
-                try:
-                    # Convert BLOB to numpy array
-                    encoding = np.frombuffer(face_encoding_blob, dtype=np.float64)
-                    if encoding.size > 0:
-                        known_face_encodings.append(encoding)
-                        known_names.append(name)
-                        known_roll_nos.append(str(roll_no))  # Convert to string for consistency
-                except Exception as e:
-                    print(f"Error parsing face encoding for {name}: {e}")
-    except mysql.connector.Error as err:
-        print(f"Error loading faces: {err}")
-    finally:
-        cursor.close()
-        db.close()
-    return known_face_encodings, known_names, known_roll_nos
-
-# KV Design String
 KV = """
-# ScrenManager:
 MainScreen:
-    # id: screen_manager
 
 <MainScreen>:
     name: "main"
-    
-    MDBoxLayout:
-        orientation: "horizontal"
-        
-        # Sidebar Navigation
+
+    MDNavigationLayout:
+        id: nav_layout
+
+        ScreenManager:
+            id: screen_manager
+
+            FaceRecognitionScreen:
+                name: "face_recognition"
+
+            DashboardScreen:
+                name: "dashboard"
+            
+            AddStudentScreen:
+
         MDNavigationDrawer:
             id: nav_drawer
             type: "modal"
             radius: (0, 16, 16, 0)
             width: "280dp"
-            
+
             MDBoxLayout:
                 orientation: "vertical"
                 padding: "8dp"
                 spacing: "8dp"
-                
-                # App Logo and Title
+
                 MDBoxLayout:
                     orientation: "vertical"
                     size_hint_y: None
                     height: "120dp"
                     padding: "16dp"
-                    
+
                     MDBoxLayout:
                         orientation: "horizontal"
                         spacing: "12dp"
                         adaptive_height: True
-                        
+
                         MDIcon:
                             icon: "face-recognition"
                             font_size: "48sp"
                             theme_text_color: "Primary"
                             pos_hint: {"center_y": 0.5}
-                        
+
                         MDLabel:
                             text: "CognitoAI"
                             font_style: "H5"
@@ -177,2829 +109,2113 @@ MainScreen:
                             size_hint_y: None
                             height: self.texture_size[1]
                             pos_hint: {"center_y": 0.5}
-                    
+
                     MDLabel:
                         text: "Face Recognition ERP System"
                         theme_text_color: "Secondary"
                         font_style: "Caption"
-                
+
                 MDSeparator:
                     height: "1dp"
-                
-                # Navigation Items
+
                 ScrollView:
                     MDList:
+                    
                         OneLineIconListItem:
                             text: "Face Recognition"
-                            on_release: app.switch_screen("face_recognition")
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
+                                app.switch_screen("face_recognition")
                             IconLeftWidget:
                                 icon: "face-recognition"
-                                theme_text_color: "Primary"
-                        
+
                         OneLineIconListItem:
                             text: "Dashboard"
-                            on_release: app.switch_screen("dashboard")
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
+                                app.switch_screen("dashboard")
                             IconLeftWidget:
                                 icon: "chart-bar"
-                                theme_text_color: "Primary"
-                        
+
                         OneLineIconListItem:
-                            text: "Student Records"
-                            on_release: app.switch_screen("students")
+                            text: "User Info"
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
                             IconLeftWidget:
-                                icon: "account-group"
-                                theme_text_color: "Primary"
-                        
+                                icon: "account"
+
                         OneLineIconListItem:
-                            text: "Reports"
-                            on_release: app.switch_screen("reports")
+                            text: "Add Student"
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
+                                app.switch_screen("add_student")
                             IconLeftWidget:
-                                icon: "file-chart"
-                                theme_text_color: "Primary"
-                        
+                                icon: "account-plus"
+
+
                         OneLineIconListItem:
-                            text: "Settings"
-                            on_release: app.switch_screen("settings")
+                            text: "About"
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
+                                app.show_about()
                             IconLeftWidget:
-                                icon: "cog"
-                                theme_text_color: "Primary"
-                
-                MDSeparator:
-                    height: "1dp"
-                
-                # User Profile/Theme Toggle
-                MDBoxLayout:
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: "100dp"
-                    padding: "16dp"
-                    
-                    MDBoxLayout:
-                        orientation: "horizontal"
-                        spacing: "12dp"
+                                icon: "information-outline"
+
+                        OneLineIconListItem:
+                            text: "Help"
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
+                                # app.switch_screen("help")
+                            IconLeftWidget:
+                                icon: "help-circle-outline"
+
+                        OneLineIconListItem:
+                            text: "Toggle Night Mode"
+                            on_release:
+                                app.root.ids.nav_drawer.set_state("close")
+                                app.toggle_theme()
+                            IconLeftWidget:
+                                icon: "theme-light-dark"
                         
-                        MDIconButton:
-                            icon: "theme-light-dark"
-                            on_release: app.toggle_theme()
-                        
-                        MDLabel:
-                            text: "Toggle Theme"
-                            theme_text_color: "Secondary"
-                    
-                    MDBoxLayout:
-                        orientation: "horizontal"
-                        spacing: "12dp"
-                        
-                        MDIconButton:
-                            icon: "information"
-                            on_release: app.show_about()
-                        
-                        MDLabel:
-                            text: "About CognitoAI"
-                            theme_text_color: "Secondary"
-        
-        # Main Content Area
+
+<FaceRecognitionScreen>:
+    ScrollView:
         MDBoxLayout:
             orientation: "vertical"
-            
-            # Top App Bar
+            size_hint_y: None
+            height: self.minimum_height
+            padding: "16dp"
+            spacing: "16dp"
+
             MDTopAppBar:
-                title: "CognitoAI - Face Recognition"
-                left_action_items: [["menu", lambda x: app.toggle_nav_drawer()]]
-                right_action_items: [["account", lambda x: app.show_user_menu()]]
-            
-            # Content Screens - Using ScreenManager for different sections
-            ScreenManager:
-                id: screen_manager
-                
-                # Face Recognition Screen
-                Screen:
-                    name: "face_recognition"
-                    
+                title: "Face Recognition"
+                elevation: 4
+                left_action_items: [["menu", lambda x: app.root.ids.nav_drawer.set_state("toggle")]]
+
+            MDCard:
+                orientation: "vertical"
+                size_hint_y: None
+                height: "400dp"
+                padding: "8dp"
+                elevation: 1
+                radius: [10, 10, 10, 10]
+
+                MDLabel:
+                    text: "Camera Feed"
+                    size_hint_y: None
+                    height: "30dp"
+                    halign: "center"
+                    theme_text_color: "Secondary"
+
+                MDSeparator:
+                    height: "1dp"
+
+                MDBoxLayout:
+                    id: camera_layout
+                    padding: "8dp"
+
+                    Image:
+                        id: camera_feed
+                        allow_stretch: True
+                        keep_ratio: True
+
+            MDCard:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                padding: "16dp"
+                elevation: 1
+                radius: [10, 10, 10, 10]
+
+                MDLabel:
+                    text: "Face Recognition Controls"
+                    size_hint_y: None
+                    height: "30dp"
+                    halign: "center"
+                    theme_text_color: "Secondary"
+
+                MDSeparator:
+                    height: "1dp"
+
+                MDGridLayout:
+                    cols: 2
+                    adaptive_height: True
+                    spacing: "16dp"
+                    padding: "16dp"
+
+                    MDRaisedButton:
+                        text: "Start Camera"
+                        icon: "camera"
+                        size_hint_x: 1
+                        on_release: app.start_camera()
+
+                    MDRaisedButton:
+                        text: "Recognize Faces"
+                        icon: "face-recognition"
+                        size_hint_x: 1
+                        on_release: app.recognize_faces()
+
+                    MDRaisedButton:
+                        text: "Mark Attendance"
+                        icon: "check-circle"
+                        size_hint_x: 1
+                        md_bg_color: app.theme_cls.accent_color
+                        on_release: app.mark_attendance_from_camera()
+
+                    MDRaisedButton:
+                        text: "Update Face"
+                        icon: "account-edit"
+                        size_hint_x: 1
+                        md_bg_color: app.theme_cls.accent_color
+                        on_release: app.open_store_face_dialog()
+
+
+
+                MDBoxLayout:
+                    orientation: "horizontal"
+                    size_hint_y: None
+                    height: "50dp"
+                    padding: "16dp"
+
+                    MDRaisedButton:
+                        text: "Upload Group Photo"
+                        icon: "image-multiple"
+                        size_hint_x: 1
+                        on_release: app.upload_group_photo()
+
+<DashboardScreen>:
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: "16dp"
+        spacing: "16dp"
+
+        MDTopAppBar:
+            title: "Dashboard"
+            elevation: 4
+            left_action_items: [["menu", lambda x: app.root.ids.nav_drawer.set_state("toggle")]]
+
+        # SUMMARY CARDS
+        MDGridLayout:
+            cols: 3
+            spacing: "12dp"
+            size_hint_y: None
+            height: "100dp"
+
+            MDCard:
+                orientation: "vertical"
+                padding: "8dp"
+                radius: [12, 12, 12, 12]
+                md_bg_color: app.theme_cls.primary_light
+
+                MDLabel:
+                    text: "Total Students"
+                    halign: "center"
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+
+                MDLabel:
+                    id: total_students
+                    text: "0"
+                    halign: "center"
+                    theme_text_color: "Primary"
+                    font_style: "H6"
+
+            MDCard:
+                orientation: "vertical"
+                padding: "8dp"
+                radius: [12, 12, 12, 12]
+                md_bg_color: app.theme_cls.primary_light
+
+                MDLabel:
+                    text: "Total Attendance Records"
+                    halign: "center"
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+
+                MDLabel:
+                    id: total_records
+                    text: "0"
+                    halign: "center"
+                    theme_text_color: "Primary"
+                    font_style: "H6"
+
+            MDCard:
+                orientation: "vertical"
+                padding: "8dp"
+                radius: [12, 12, 12, 12]
+                md_bg_color: app.theme_cls.primary_light
+
+                MDLabel:
+                    text: "Class Avg Attendance %"
+                    halign: "center"
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+
+                MDLabel:
+                    id: class_avg
+                    text: "0%"
+                    halign: "center"
+                    theme_text_color: "Primary"
+                    font_style: "H6"
+        
+        ScrollView:
+            MDBoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                padding: "16dp"
+                spacing: "16dp"
+
+                MDCard:
+                    orientation: "vertical"
+                    padding: "16dp"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    elevation: 1
+                    radius: [10, 10, 10, 10]
+
+                    MDLabel:
+                        text: "Filters"
+                        halign: "center"
+                        theme_text_color: "Primary"
+                        font_style: "H6"
+
+                    MDGridLayout:
+                        cols: 2
+                        padding: "8dp"
+                        spacing: "8dp"
+                        adaptive_height: True
+
+                        MDTextField:
+                            id: start_date
+                            hint_text: "Start Date (YYYY-MM-DD)"
+                            on_focus: if self.focus: app.show_date_picker("start")
+                            size_hint_x: 0.5
+
+                        MDTextField:
+                            id: end_date
+                            hint_text: "End Date (YYYY-MM-DD)"
+                            on_focus: if self.focus: app.show_date_picker("end")
+                            size_hint_x: 0.5
+
+                        MDDropDownItem:
+                            id: student_dropdown
+                            text: "Select Student"
+                            on_release: app.show_student_dropdown(self)
+                            size_hint_x: 0.5
+
+                        MDDropDownItem:
+                            id: course_dropdown
+                            text: "Select Course"
+                            on_release: app.show_course_dropdown(self)
+                            size_hint_x: 0.5
+
+                        MDDropDownItem:
+                            id: attendance_range_dropdown
+                            text: "Select Attendance Range"
+                            on_release: app.show_attendance_range_dropdown(self)
+                            size_hint_x: 0.5
+
                     MDBoxLayout:
+                        orientation: "horizontal"
+                        spacing: "8dp"
+                        padding: "8dp"
+                        size_hint_y: None
+                        height: "48dp"
+
+                        MDRaisedButton:
+                            text: "Apply Filters"
+                            size_hint_x: 0.33
+                            on_release: app.update_dashboard()
+
+                        MDRaisedButton:
+                            text: "Reset Filters"
+                            size_hint_x: 0.33
+                            md_bg_color: app.theme_cls.error_color
+                            on_release: app.reset_filters()
+
+                        MDRaisedButton:
+                            text: "Export to CSV"
+                            size_hint_x: 0.33
+                            on_release: app.export_filtered_data_to_csv()
+
+                MDCard:
+                    orientation: "vertical"
+                    padding: "16dp"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    elevation: 1
+                    radius: [10, 10, 10, 10]
+
+                    MDLabel:
+                        text: "Leaderboard"
+                        halign: "center"
+                        theme_text_color: "Primary"
+                        font_style: "H6"
+
+                    MDBoxLayout:
+                        id: leaderboard_cards
                         orientation: "vertical"
-                        padding: "16dp"
-                        spacing: "16dp"
-                        
-                        # Camera View Card
-                        MDCard:
+                        spacing: "8dp"
+                        size_hint_y: None
+                        height: self.minimum_height
+# 
+                MDCard:
+                    orientation: "vertical"
+                    padding: "16dp"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    elevation: 1
+                    radius: [10, 10, 10, 10]
+
+                    MDLabel:
+                        text: "Students by Attendance Range"
+                        halign: "center"
+                        theme_text_color: "Primary"
+                        font_style: "H6"
+
+                    ScrollView:
+                        size_hint_y: None
+                        height: "200dp"
+
+                        MDList:
+                            id: attendance_range_list        
+# 
+
+                
+                # Graphs in a 2-column grid
+                MDGridLayout:
+                    cols: 2
+                    spacing: "12dp"
+                    padding: "8dp"
+                    size_hint_y: None
+                    height: self.minimum_height
+
+                    MDCard:
+                        orientation: "vertical"
+                        padding: "12dp"
+                        size_hint_x: 0.49
+                        size_hint_y: None
+                        height: "350dp"
+                        elevation: 1
+                        radius: [10, 10, 10, 10]
+
+                        MDLabel:
+                            text: "Overall Attendance Statistics"
+                            halign: "center"
+                            theme_text_color: "Primary"
+                            font_style: "H6"
+
+                        MDBoxLayout:
                             orientation: "vertical"
-                            size_hint_y: 0.6
-                            padding: "8dp"
-                            elevation: 1
-                            radius: [10, 10, 10, 10]
-                            
-                            MDLabel:
-                                text: "Camera Feed"
+                            size_hint_y: None
+                            height: "220dp"
+
+                            Image:
+                                id: overall_stats
                                 size_hint_y: None
-                                height: "30dp"
-                                halign: "center"
-                                theme_text_color: "Secondary"
-                            
-                            MDSeparator:
-                                height: "1dp"
-                            
+                                height: "220dp"
+                                allow_stretch: True
+                                keep_ratio: True
+
                             MDBoxLayout:
-                                id: camera_layout
+                                orientation: "horizontal"
+                                size_hint_y: None
+                                height: "40dp"
                                 padding: "8dp"
-                                
-                                Image:
-                                    id: camera_feed
-                                    allow_stretch: True
-                                    keep_ratio: True
-                        
-                        # Controls Card
-                        MDCard:
-                            orientation: "vertical"
-                            size_hint_y: 0.4
-                            padding: "16dp"
-                            elevation: 1
-                            radius: [10, 10, 10, 10]
-                            
-                            MDLabel:
-                                text: "Face Recognition Controls"
-                                size_hint_y: None
-                                height: "30dp"
-                                halign: "center"
-                                theme_text_color: "Secondary"
-                            
-                            MDSeparator:
-                                height: "1dp"
-                            
-                            # Action Buttons Grid
-                            MDGridLayout:
-                                cols: 2
-                                spacing: "16dp"
-                                padding: "16dp"
-                                
-                                # Button 1 - Start Camera
-                                MDRaisedButton:
-                                    text: "Start Camera"
-                                    icon: "camera"
-                                    size_hint_x: 1
-                                    on_release: app.start_camera()
-                                
-                                # Button 2 - Recognize Faces
-                                MDRaisedButton:
-                                    text: "Recognize Faces"
-                                    icon: "face-recognition"
-                                    size_hint_x: 1
-                                    on_release: app.recognize_faces()
-                                
-                                # Button 3 - Mark Attendance
-                                MDRaisedButton:
-                                    text: "Mark Attendance"
-                                    icon: "check-circle"
-                                    size_hint_x: 1
-                                    md_bg_color: app.theme_cls.accent_color
-                                    on_release: app.recognize_faces()
-                                
-                                # Button 4 - Store New Face
-                                MDRaisedButton:
-                                    text: "Store New Face"
-                                    icon: "account-plus"
-                                    size_hint_x: 1
-                                    md_bg_color: app.theme_cls.accent_color
-                                    on_release: app.open_store_face_dialog()
-                            
-                            MDBoxLayout:
-                                orientation: "horizontal"
-                                size_hint_y: None
-                                height: "50dp"
-                                padding: "16dp"
-                                
-                                # Upload Group Photo Button
-                                MDRaisedButton:
-                                    text: "Upload Group Photo"
-                                    icon: "image-multiple"
-                                    size_hint_x: 1
-                                    on_release: app.upload_group_photo()
-                
-                # Dashboard Screen
-                Screen:
-                    name: "dashboard"
-                    on_enter: app.on_dashboard_enter()
+                                spacing: "8dp"
+                                pos_hint: {"center_x": 0.5}
 
-                    MDBoxLayout:
+                                MDIconButton:
+                                    icon: "magnify-plus-outline"
+                                    on_release: app.zoom_graph("overall_stats", 1.1)
+
+                                MDIconButton:
+                                    icon: "magnify-minus-outline"
+                                    on_release: app.zoom_graph("overall_stats", 0.9)
+
+                    MDCard:
                         orientation: "vertical"
+                        padding: "12dp"
+                        size_hint_x: 0.49
+                        size_hint_y: None
+                        height: "350dp"
+                        elevation: 1
+                        radius: [10, 10, 10, 10]
+
+                        MDLabel:
+                            text: "Individual Attendance Trend"
+                            halign: "center"
+                            theme_text_color: "Primary"
+                            font_style: "H6"
 
                         MDBoxLayout:
-                            id: debug_id_marker
                             orientation: "vertical"
+                            size_hint_y: None
+                            height: "220dp"
 
-                        MDBoxLayout:
-                            orientation: "vertical"
-                            padding: "16dp"
-                            spacing: "16dp"
+                            Image:
+                                id: individual_trend
+                                size_hint_y: None
+                                height: "220dp"
+                                allow_stretch: True
+                                keep_ratio: True
 
-                            # Dashboard Header
                             MDBoxLayout:
                                 orientation: "horizontal"
                                 size_hint_y: None
-                                height: "60dp"
-                                spacing: "16dp"
+                                height: "40dp"
+                                padding: "8dp"
+                                spacing: "8dp"
+                                pos_hint: {"center_x": 0.5}
 
-                                MDTextField:
-                                    id: roll_no_filter
-                                    hint_text: "Filter by Roll No"
-                                    helper_text: "Enter student roll number"
-                                    helper_text_mode: "on_focus"
-                                    icon_right: "magnify"
-                                    on_text_validate: app.filter_dashboard()
+                                MDIconButton:
+                                    icon: "magnify-plus-outline"
+                                    on_release: app.zoom_graph("individual_trend", 1.1)
 
-                                MDTextField:
-                                    id: date_range_label
-                                    hint_text: "Date Range"
-                                    readonly: True
-                                    icon_right: "calendar"
-                                    on_focus: app.show_date_picker() if self.focus else None
+                                MDIconButton:
+                                    icon: "magnify-minus-outline"
+                                    on_release: app.zoom_graph("individual_trend", 0.9)
 
-                            # Stats Cards
+                    MDCard:
+                        orientation: "vertical"
+                        padding: "12dp"
+                        size_hint_x: 0.49
+                        size_hint_y: None
+                        height: "350dp"
+                        elevation: 1
+                        radius: [10, 10, 10, 10]
+
+                        MDLabel:
+                            text: "Attendance Heatmap"
+                            halign: "center"
+                            theme_text_color: "Primary"
+                            font_style: "H6"
+
+                        MDBoxLayout:
+                            orientation: "vertical"
+                            size_hint_y: None
+                            height: "220dp"
+
+                            Image:
+                                id: heatmap_graph
+                                size_hint_y: None
+                                height: "220dp"
+                                allow_stretch: True
+                                keep_ratio: True
+
                             MDBoxLayout:
                                 orientation: "horizontal"
                                 size_hint_y: None
-                                height: "100dp"
-                                spacing: "16dp"
+                                height: "40dp"
+                                padding: "8dp"
+                                spacing: "8dp"
+                                pos_hint: {"center_x": 0.5}
 
-                                # Card 1
-                                MDCard:
-                                    orientation: "vertical"
-                                    padding: "16dp"
-                                    elevation: 1
-                                    radius: [10, 10, 10, 10]
+                                MDIconButton:
+                                    icon: "magnify-plus-outline"
+                                    on_release: app.zoom_graph("heatmap_graph", 1.1)
 
-                                    MDIcon:
-                                        icon: "account-group"
-                                        halign: "center"
-                                        font_size: "24sp"
-                                        theme_text_color: "Primary"
+                                MDIconButton:
+                                    icon: "magnify-minus-outline"
+                                    on_release: app.zoom_graph("heatmap_graph", 0.9)
 
-                                    MDLabel:
-                                        id: total_students
-                                        text: "0"
-                                        halign: "center"
-                                        font_style: "H5"
+                    MDCard:
+                        orientation: "vertical"
+                        padding: "12dp"
+                        size_hint_x: 0.49
+                        size_hint_y: None
+                        height: "350dp"
+                        elevation: 1
+                        radius: [10, 10, 10, 10]
 
-                                    MDLabel:
-                                        text: "Total Students"
-                                        halign: "center"
-                                        theme_text_color: "Secondary"
-                                        font_style: "Caption"
+                        MDLabel:
+                            text: "Daily Attendance Rate"
+                            halign: "center"
+                            theme_text_color: "Primary"
+                            font_style: "H6"
 
-                                # Card 2
-                                MDCard:
-                                    orientation: "vertical"
-                                    padding: "16dp"
-                                    elevation: 1
-                                    radius: [10, 10, 10, 10]
+                        MDBoxLayout:
+                            orientation: "vertical"
+                            size_hint_y: None
+                            height: "220dp"
 
-                                    MDIcon:
-                                        icon: "clipboard-text"
-                                        halign: "center"
-                                        font_size: "24sp"
-                                        theme_text_color: "Primary"
+                            Image:
+                                id: daily_attendance_rate
+                                size_hint_y: None
+                                height: "220dp"
+                                allow_stretch: True
+                                keep_ratio: True
 
-                                    MDLabel:
-                                        id: total_records
-                                        text: "0"
-                                        halign: "center"
-                                        font_style: "H5"
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                size_hint_y: None
+                                height: "40dp"
+                                padding: "8dp"
+                                spacing: "8dp"
+                                pos_hint: {"center_x": 0.5}
 
-                                    MDLabel:
-                                        text: "Total Records"
-                                        halign: "center"
-                                        theme_text_color: "Secondary"
-                                        font_style: "Caption"
+                                MDIconButton:
+                                    icon: "magnify-plus-outline"
+                                    on_release: app.zoom_graph("daily_attendance_rate", 1.1)
 
-                                # Card 3
-                                MDCard:
-                                    orientation: "vertical"
-                                    padding: "16dp"
-                                    elevation: 1
-                                    radius: [10, 10, 10, 10]
+                                MDIconButton:
+                                    icon: "magnify-minus-outline"
+                                    on_release: app.zoom_graph("daily_attendance_rate", 0.9)
 
-                                    MDIcon:
-                                        icon: "chart-arc"
-                                        halign: "center"
-                                        font_size: "24sp"
-                                        theme_text_color: "Primary"
+                MDCard:
+                    orientation: "vertical"
+                    padding: "16dp"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    elevation: 1
+                    radius: [10, 10, 10, 10]
 
-                                    MDLabel:
-                                        id: attendance_rate
-                                        text: "0%"
-                                        halign: "center"
-                                        font_style: "H5"
+                    MDLabel:
+                        text: "Attendance Records (Latest First)"
+                        halign: "center"
+                        theme_text_color: "Primary"
+                        font_style: "H6"
 
-                                    MDLabel:
-                                        text: "Attendance Rate"
-                                        halign: "center"
-                                        theme_text_color: "Secondary"
-                                        font_style: "Caption"
+                    ScrollView:
+                        size_hint_y: None
+                        height: "250dp"
 
-                            # Graphs and Charts
-                            ScrollView:
-                                do_scroll_x: False
-                                do_scroll_y: True
+                        MDList:
+                            id: attendance_list
 
-                                MDBoxLayout:
-                                    id: graphs_layout
-                                    orientation: "vertical"
-                                    adaptive_height: True
-                                    size_hint_x: 1
-                                    spacing: "16dp"
+                MDCard:
+                    orientation: "vertical"
+                    padding: "16dp"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    elevation: 1
+                    radius: [10, 10, 10, 10]
 
-                                    MDCard:
-                                        orientation: "vertical"
-                                        size_hint_y: None
-                                        height: "300dp"
-                                        padding: "16dp"
-                                        elevation: 1
-                                        radius: [10, 10, 10, 10]
+                    MDLabel:
+                        text: "Edit Today's Attendance"
+                        halign: "center"
+                        theme_text_color: "Primary"
+                        font_style: "H6"
 
-                                        MDLabel:
-                                            text: "Daily Attendance Chart"
-                                            halign: "center"
-                                            size_hint_y: None
-                                            height: "30dp"
+                    ScrollView:
+                        size_hint_y: None
+                        height: "300dp"
 
-                                        MDBoxLayout:
-                                            id: attendance_chart
+                        MDList:
+                            id: edit_attendance_list
 
-                
-                # Additional Screens (Student Records, Reports, Settings)
-                # Add similar structure for the other screens
+
+<AddStudentScreen@Screen>:
+    name: "add_student"
+
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: "20dp"
+        spacing: "10dp"
+
+        MDTopAppBar:
+            title: "Add New Student"
+            elevation: 4
+            left_action_items: [["menu", lambda x: app.root.ids.nav_drawer.set_state("toggle")]]
+
+        MDCard:
+            orientation: "vertical"
+            size_hint_y: None
+            height: "200dp"
+            padding: "8dp"
+            elevation: 1
+            radius: [10, 10, 10, 10]
+
+            MDLabel:
+                text: "Camera Feed"
+                size_hint_y: None
+                height: "30dp"
+                halign: "center"
+                theme_text_color: "Secondary"
+
+            MDSeparator:
+                height: "1dp"
+
+            Image:
+                id: add_student_camera_feed
+                size_hint_y: None
+                height: "150dp"
+                allow_stretch: True
+                keep_ratio: True
+
+        MDTextField:
+            id: add_roll
+            hint_text: "Roll Number"
+            mode: "rectangle"
+            on_text: app.check_roll_availability(self.text)
+
+        MDTextField:
+            id: add_name
+            hint_text: "Name"
+            mode: "rectangle"
+
+        MDTextField:
+            id: add_course
+            hint_text: "Course"
+            mode: "rectangle"
+
+        MDTextField:
+            id: add_dob
+            hint_text: "Date of Birth (YYYY-MM-DD)"
+            mode: "rectangle"
+
+        MDGridLayout:
+            cols: 2
+            adaptive_height: True
+            spacing: "16dp"
+            padding: "16dp"
+
+            MDRaisedButton:
+                text: "Start Camera"
+                icon: "camera"
+                on_release: app.start_add_student_camera()
+
+            MDRaisedButton:
+                text: "Capture Face"
+                icon: "camera-snapshot"
+                on_release: app.capture_face_for_add()
+
+            MDRaisedButton:
+                text: "Upload Image"
+                icon: "image-plus"
+                on_release: app.upload_face_image()
+
+            MDRaisedButton:
+                text: "Save Student"
+                icon: "content-save"
+                md_bg_color: app.theme_cls.primary_color
+                on_release: app.save_new_student()
+
+        Widget:
+            size_hint_y: None
+            height: "20dp"
+
+
 """
 
-# Define Tabs
-class Tab1(MDBoxLayout, MDTabsBase):
-    pass
-
-class Tab2(MDBoxLayout, MDTabsBase):
-    pass
-
-class MainScreen(Screen):
-    pass
-
-class FaceRecognitionApp(MDApp):
+class FaceAttendance:
+    def __init__(self):
+        self.known_face_encodings = []
+        self.known_roll_numbers = []
+        self.load_known_faces()
     
-    def build(self):
-        self.theme_cls.primary_palette = "Blue"
-        self.theme_cls.theme_style = "Light"
-        self.screen_manager = Builder.load_string(KV)
-        self.capture = None
-        self.recognized_faces = []
-        self.start_date = None
-        self.end_date = None
+    def load_known_faces(self):
+        self.known_face_encodings = []
+        self.known_roll_numbers = []
+        connection = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = connection.cursor()
+        cursor.execute("SELECT roll_no, face_id FROM student_info WHERE face_id IS NOT NULL")
+        for roll_no, face_blob in cursor.fetchall():
+            try:
+                encoding = np.frombuffer(face_blob, dtype=np.float64)
+                if encoding.size == 128:  # Ensure valid face encoding (128 dimensions)
+                    self.known_face_encodings.append(encoding)
+                    self.known_roll_numbers.append(str(roll_no))
+            except Exception as e:
+                print(f"Error decoding face for roll {roll_no}: {e}")
+        connection.close()
+
+    def recognize_from_image(self, image):
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        locations = face_recognition.face_locations(rgb)
+        encodings = face_recognition.face_encodings(rgb, locations)
+        recognized = []
+        for enc in encodings:
+            distances = face_recognition.face_distance(self.known_face_encodings, enc)
+            best_idx = np.argmin(distances)
+            if distances[best_idx] < 0.6:
+                confidence = (1 - distances[best_idx]) * 100
+                recognized.append((self.known_roll_numbers[best_idx], confidence))
+        return recognized
+
+    def mark_attendance(self, rolls):
+        connection = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = connection.cursor()
+        today = date.today().strftime('%Y-%m-%d')
+        for roll in rolls:
+            cursor.execute("SELECT * FROM attendance WHERE roll_no = %s AND date = %s", (roll, today))
+            if cursor.fetchone() is None:
+                cursor.execute("INSERT INTO attendance (roll_no, date, attendance) VALUES (%s, %s, 'P')", (roll, today))
+        connection.commit()
+        connection.close()
+
+class StoreFaceDialog(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(orientation='vertical', spacing="12dp", padding="25dp", size_hint_y=None)
+        self.height = "400dp"
+        self.debounce_event = None
+        self.bind(minimum_height=self.setter('height'))
+        self.title_label = MDLabel(
+            text="Store Face Data",
+            halign="center",
+            theme_text_color="Custom",
+            text_color=(0, 0, 0, 1),
+            font_style="H6",
+            size_hint_y=None,
+            height="40dp",
+            padding=(10, 10)
+        )
+        self.add_widget(self.title_label)
+        self.roll_input = MDTextField(
+            hint_text="Enter Roll No",
+            helper_text="Auto-fills if existing",
+            helper_text_mode="on_focus",
+            size_hint_y=None,
+            height="60dp"
+        )
+        self.roll_input.bind(text=self.check_existing_student)
+        self.add_widget(self.roll_input)
+
+        self.name_input = MDTextField(hint_text="Enter Name")
+        self.course_input = MDTextField(hint_text="Enter Course")
+        self.dob_input = MDTextField(hint_text="DOB (YYYY-MM-DD)")
+        self.add_widget(self.name_input)
+        self.add_widget(self.course_input)
+        self.add_widget(self.dob_input)
+
+        self.buttons = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height='40dp')
+        self.buttons.add_widget(MDFlatButton(text="Cancel", on_release=self.dismiss_dialog))
+        self.buttons.add_widget(MDFlatButton(text="Load from Image", on_release=self.load_from_image))
+        self.buttons.add_widget(MDRaisedButton(text="Capture from Camera", on_release=self.capture_from_camera))
+        self.add_widget(self.buttons)
+
         self.dialog = None
-        self.camera_feed_widget = None  # Initialize to None
-        
-        sns.set_theme(style="whitegrid", palette="muted")
-        
-        # Wait longer before attempting to find the widget - 2 seconds
-        Clock.schedule_once(self.store_camera_widget_reference, 2)
-        
-        self.db_config = {
-            "host": "localhost",
-            "user": "root",
-            "password": "0000",
-            "database": "cognitoai"
+
+    def open(self):
+        self.dialog = MDDialog(
+            title="",
+            type="custom",
+            content_cls=self,
+            buttons=[],
+            auto_dismiss=False
+        )
+        self.dialog.open()
+
+    def dismiss_dialog(self, *args):
+        self.dialog.dismiss()
+
+    def check_existing_student(self, instance, value):
+        if self.debounce_event:
+            self.debounce_event.cancel()
+        self.debounce_event = Clock.schedule_once(self.query_student_data, 0.5)
+
+    def query_student_data(self, dt):
+        roll_no = self.roll_input.text.strip()
+        if not roll_no:
+            return
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, course, dob FROM student_info WHERE roll_no = %s", (roll_no,))
+        data = cursor.fetchone()
+        conn.close()
+
+        if data:
+            self.name_input.text = data[0]
+            self.course_input.text = data[1]
+            self.dob_input.text = str(data[2])
+            toast("Student data loaded.")
+        else:
+            self.name_input.text = ""
+            self.course_input.text = ""
+            self.dob_input.text = ""
+
+    def load_from_image(self, *args):
+        chooser = FileChooserIconView()
+
+        def select_file(instance, selection, touch):
+            if selection:
+                image_path = selection[0]
+                self.store_face_data(image_path=image_path)
+                popup.dismiss()
+
+        popup = Popup(title="Select Image", content=chooser, size_hint=(0.9, 0.9))
+        chooser.bind(on_submit=select_file)
+        popup.open()
+
+    def capture_from_camera(self, *args):
+        cap = cv2.VideoCapture(0)
+        ret, frame = cap.read()
+        cap.release()
+
+        if ret:
+            temp_path = "temp_capture.jpg"
+            cv2.imwrite(temp_path, frame)
+            self.store_face_data(image_path=temp_path)
+            os.remove(temp_path)
+        else:
+            toast("Failed to capture image")
+
+    def store_face_data(self, image_path):
+        roll_no = self.roll_input.text.strip()
+        name = self.name_input.text.strip()
+        course = self.course_input.text.strip()
+        dob = self.dob_input.text.strip()
+
+        if not (roll_no and name and course and dob):
+            toast("Please fill all fields")
+            return
+
+        img = face_recognition.load_image_file(image_path)
+        encodings = face_recognition.face_encodings(img)
+        if not encodings:
+            toast("No face detected")
+            return
+
+        face_data = encodings[0].tobytes()
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM student_info WHERE roll_no = %s", (roll_no,))
+        # if cursor.fetchone():
+        #     cursor.execute("""
+        #         UPDATE student_info 
+        #         SET name = %s, course = %s, dob = %s, face_id = %s
+        #         WHERE roll_no = %s
+        #     """, (name, course, dob, face_data, roll_no))
+        #     toast("Student info updated")
+        # else:
+        #     cursor.execute("""
+        #         INSERT INTO student_info (roll_no, name, course, dob, face_id)
+        #         VALUES (%s, %s, %s, %s, %s)
+        #     """, (roll_no, name, course, dob, face_data))
+        #     toast("New student added")
+
+        if cursor.fetchone():
+            cursor.execute("""
+                UPDATE student_info 
+                SET name = %s, course = %s, dob = %s, face_id = %s
+                WHERE roll_no = %s
+            """, (name, course, dob, face_data, roll_no))
+            toast("Student info updated successfully.")
+        else:
+            toast("Roll number not found. Please add new students from the Add Student tab.")
+            conn.close()
+            return
+
+
+        conn.commit()
+        conn.close()
+        self.dialog.dismiss()
+
+
+class CognitoAIApp(MDApp):
+    def build(self):
+        self.title = "CognitoAI"
+        self.theme_cls.theme_style = "Light"  # Set initial theme
+        self.theme_cls.primary_palette = "Blue"
+        self.attendance = FaceAttendance()
+        self.capture = None
+        self.student_menu = None
+        self.course_menu = None
+        self.attendance_range_menu = None
+        self.zoom_levels = {
+            "overall_stats": 1.0,
+            "individual_trend": 1.0,
+            "heatmap_graph": 1.0,
+            "daily_attendance_rate": 1.0
         }
-        
-        # Verify database structure
-        verify_database_consistency()
-        
-        # Load known faces from the database
-        self.known_face_encodings, self.known_names, self.known_roll_nos = load_known_faces()
-        print(f"Loaded {len(self.known_face_encodings)} face encodings from database")
-        
-        return self.screen_manager
-        return MainScreen()
-    
-    def on_dashboard_enter(self):
-        try:
-            # main_screen = self.screen_manager.get_screen("main")
-            main_screen = self.screen_manager
-            print("✅ Got main screen")
-            
-            inner_sm = main_screen.ids.screen_manager
-            print("✅ Got inner screen manager:", inner_sm)
+        return Builder.load_string(KV)
 
-            dashboard_screen = inner_sm.get_screen("dashboard")
-            print("✅ Got dashboard screen")
+    def switch_screen(self, screen):
+        self.root.ids.screen_manager.current = screen
+        if screen == "dashboard":
+            self.load_dashboard_summary()
+            self.load_attendance_records()
+            self.load_editable_attendance()
+            self.load_attendance_range_list()
 
-            print("✅ dashboard_screen.ids keys:", dashboard_screen.ids.keys())
-            
-        except Exception as e:
-            print("❌ Error loading dashboard:", e)
-            self.show_error_dialog(f"Error loading dashboard: {e}")
+    def zoom_graph(self, graph_id, scale_factor):
+        # Get the current zoom level
+        current_zoom = self.zoom_levels.get(graph_id, 1.0)
+        new_zoom = current_zoom * scale_factor
 
+        # Set zoom limits (e.g., 0.5x to 2.0x)
+        if new_zoom < 0.5:
+            new_zoom = 0.5
+            toast("Minimum zoom level reached.")
+        elif new_zoom > 2.0:
+            new_zoom = 2.0
+            toast("Maximum zoom level reached.")
 
+        # Update the zoom level
+        self.zoom_levels[graph_id] = new_zoom
+
+        # Get the Image widget
+        image_widget = self.root.ids.screen_manager.get_screen("dashboard").ids[graph_id]
+
+        # Adjust the size of the Image widget
+        base_height = 220  # Original height in dp
+        new_height = base_height * new_zoom
+        image_widget.height = f"{new_height}dp"
 
     def toggle_theme(self):
-        current = self.theme_cls.theme_style
-        self.theme_cls.theme_style = "Dark" if current == "Light" else "Light"
-
-    def toggle_nav_drawer(self):
-        try:
-            nav_drawer = self.screen_manager.ids.nav_drawer
-            nav_drawer.set_state("toggle")
-        except Exception as e:
-            print(f"❌ Error toggling nav drawer: {e}")
-
-
-    # def switch_screen(self, screen_name):
-    #     """Switch to the specified screen in the screen manager"""
-    #     # Close the navigation drawer
-    #     nav_drawer = self.screen_manager.get_screen('main').ids.nav_drawer
-    #     nav_drawer.set_state("close")
+        if self.theme_cls.theme_style == "Light":
+            self.theme_cls.theme_style = "Dark"
+            self.theme_cls.primary_palette = "BlueGray"  # Suitable for dark mode
+            toast("Switched to Night Mode")
+        else:
+            self.theme_cls.theme_style = "Light"
+            self.theme_cls.primary_palette = "Blue"  # Suitable for light mode
+            toast("Switched to Light Mode")
+    def reset_filters(self):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
         
-    #     # Switch to the selected screen
-    #     screen_manager = self.screen_manager.get_screen('main').ids.screen_manager
-    #     screen_manager.current = screen_name
+        # Clear all filter fields
+        screen.start_date = None
+        screen.end_date = None
+        screen.selected_student = None
+        screen.selected_course = None
+        screen.selected_attendance_range = None
         
-    #     # Update the app bar title - THIS IS LIKELY CAUSING THE ERROR
-    #     # Fix by checking if top_app_bar exists in ids
-    #     main_screen = self.screen_manager.get_screen('main')
-    #     if hasattr(main_screen.ids, 'top_app_bar'):
-    #         main_screen.ids.top_app_bar.title = f"CognitoAI - {screen_name.replace('_', ' ').title()}"
-    def switch_screen(self, screen_name):
-        try:
-            main_screen = self.screen_manager
-            nav_drawer = main_screen.ids.nav_drawer
-            nav_drawer.set_state("close")
+        # Reset UI elements
+        screen.ids.start_date.text = ""
+        screen.ids.end_date.text = ""
+        screen.ids.student_dropdown.text = "Select Student"
+        screen.ids.course_dropdown.text = "Select Course"
+        screen.ids.attendance_range_dropdown.text = "Select Attendance Range"
+        
+        # Determine fallback date range
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+        result = cursor.fetchone()
+        conn.close()
 
-            screen_manager = main_screen.ids.screen_manager
-            screen_manager.current = screen_name
+        start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+        end_date = result[1] if result and result[1] else datetime.now().date()
 
-            if screen_name == "dashboard":
-                self.load_attendance_dashboard()
+        # Reload dashboard with full data
+        self.load_dashboard_summary()
+        self.load_attendance_records()
+        self.load_editable_attendance()
+        self.load_attendance_range_list()
+        self.generate_overall_stats(start_date, end_date, None, None)
+        self.generate_individual_trend(start_date, end_date, None)
+        self.generate_attendance_heatmap(start_date, end_date)
+        self.generate_daily_attendance_rate(start_date, end_date)
+        
+        toast("Filters reset. Dashboard reloaded.")
 
-            # Update app bar
-            top_bar = next((c for c in main_screen.walk() if isinstance(c, MDTopAppBar)), None)
-            if top_bar:
-                top_bar.title = f"CognitoAI - {screen_name.replace('_', ' ').title()}"
-
-        except Exception as e:
-            print(f"Error in switch_screen: {e}")
-
-
-
-
-    def show_about(self):
-        """Show about dialog"""
-        about_dialog = MDDialog(
-            title="About CognitoAI",
-            text="CognitoAI is a Face Recognition ERP System designed for automated attendance tracking and student management.",
-            buttons=[
-                MDFlatButton(text="Close", on_press=lambda x: about_dialog.dismiss())
-            ]
-        )
-        about_dialog.open()
-
-    def on_tab_switch(self, instance_tabs, instance_tab, instance_tab_label, tab_text):
-        if tab_text == "ERP Dashboard":
-            self.load_attendance_dashboard()
-
-    def on_stop(self):
-        """Release resources when app stops"""
-        if self.capture:
-            self.capture.release()
-            self.capture = None
-        Clock.unschedule(self.update_camera)
 
     def start_camera(self):
-        """Start Camera Feed"""
-        print("Starting camera...")
-        print(f"Camera feed widget exists: {hasattr(self, 'camera_feed_widget') and self.camera_feed_widget is not None}")
-        
-        if not hasattr(self, 'camera_feed_widget') or self.camera_feed_widget is None:
-            # Try once more to find the widget
-            print("Attempting emergency widget search...")
-            found = False
-            
-            # Direct search for any Image widget that could work
-            for widget in self.screen_manager.walk():
-                if isinstance(widget, Image):
-                    print(f"Found Image widget with id: {getattr(widget, 'id', 'No ID')}")
-                    self.camera_feed_widget = widget
-                    found = True
-                    break
-            
-            if not found:
-                self.show_error_dialog("Camera widget not initialized. Please try again in a moment.")
-                return
-        
-        # Setup the camera
-        if self.capture:
-            self.capture.release()
-        
         self.capture = cv2.VideoCapture(0)
-        if not self.capture.isOpened():
-            print("Error: Could not open camera")
-            self.show_error_dialog("Could not open camera. Please check your camera connection.")
-            self.capture = None
-            return
-        
-        print("Camera opened successfully! Scheduling updates...")
         Clock.schedule_interval(self.update_camera, 1.0 / 30.0)
 
-    def store_camera_widget_reference(self, *args): #debugging
-        """Find and store reference to the camera feed widget using a deeper search"""
-        # print("Attempting to find camera_feed widget...")
-        
-        # Print the entire widget tree for debugging
-        # print("Widget tree:")
-        for widget in self.screen_manager.walk():
-            if hasattr(widget, 'id') and widget.id:
-                print(f"Widget: {widget.__class__.__name__}, ID: {widget.id}")
-        
-        try:
-            # Try to trace the exact path based on your KV structure
-            # main_screen = self.screen_manager.get_screen('main')
-            main_screen = self.screen_manager  # Already the MainScreen
-
-            inner_screen_manager = None
-            
-            # Find the inner ScreenManager
-            for child in main_screen.walk():
-                if isinstance(child, ScreenManager) and hasattr(child, 'id') and child.id == 'screen_manager':
-                    inner_screen_manager = child
-                    break
-            
-            if inner_screen_manager:
-                # Find the face_recognition screen
-                face_recognition_screen = inner_screen_manager.get_screen('face_recognition')
-                
-                # Find the camera_feed Image widget
-                for child in face_recognition_screen.walk():
-                    if isinstance(child, Image) and hasattr(child, 'id') and child.id == 'camera_feed':
-                        self.camera_feed_widget = child
-                        # print("✅ Camera feed widget found and stored!")
-                        return
-            
-            # print("❌ Camera feed widget NOT found. Scheduling another attempt...")
-            # If not found, schedule another attempt
-            Clock.schedule_once(self.store_camera_widget_reference, 1)
-        except Exception as e:
-            print(f"Error finding camera feed widget: {e}")
-            # Schedule another attempt
-            Clock.schedule_once(self.store_camera_widget_reference, 1)
-
     def update_camera(self, dt):
-        """Update the Camera Frame"""
-        if not hasattr(self, 'camera_feed_widget') or self.camera_feed_widget is None:
-            # Try to find the camera feed widget
-            try:
-                main_screen = self.screen_manager.get_screen('main')
-                if hasattr(main_screen.ids, 'screen_manager'):
-                    inner_screen_manager = main_screen.ids.screen_manager
-                    face_recognition_screen = inner_screen_manager.get_screen('face_recognition')
-                    for child in face_recognition_screen.walk():
-                        if isinstance(child, Image) and hasattr(child, 'id') and child.id == 'camera_feed':
-                            self.camera_feed_widget = child
-                            break
-            except Exception as e:
-                print(f"Error finding camera feed widget: {e}")
-                return
-                
-        if self.capture and self.capture.isOpened():
-            ret, frame = self.capture.read()
-            if ret:
-                frame = cv2.flip(frame, 0)  # Flip for Kivy's coordinate system
-                frame = cv2.flip(frame, 1)  # Mirror image
-                buffer = frame.tobytes()
-                texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
-                texture.blit_buffer(buffer, colorfmt='bgr', bufferfmt='ubyte')
-                
-                # Apply texture to camera feed widget
-                if self.camera_feed_widget:
-                    self.camera_feed_widget.texture = texture
-
-    def recognize_faces(self):
-        """Recognize Faces in Camera"""
-        # Try to find camera feed widget if not already set
-        """Recognize Faces in Camera"""
-        if not hasattr(self, 'capture') or self.capture is None or not self.capture.isOpened():
-            self.show_error_dialog("Please start the camera first before recognizing faces")
-            return
-        
-    # Rest of your method...
-        if not self.capture or not self.capture.isOpened():
-            self.show_error_dialog("Error: Camera not initialized")
+        if not self.capture:
             return
         ret, frame = self.capture.read()
-        if not ret:
-            self.show_error_dialog("Error: Unable to capture frame")
-            return
+        if ret:
+            texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
+            texture.blit_buffer(cv2.flip(frame, 0).tobytes(), colorfmt='bgr', bufferfmt='ubyte')
+            self.root.ids.screen_manager.get_screen("face_recognition").ids.camera_feed.texture = texture
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_locations = face_recognition.face_locations(rgb_frame)
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-
-        self.recognized_faces = []
-        for face_encoding in face_encodings:
-            matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
-            name, roll_no = "Unknown", "N/A"
-            if True in matches:
-                # matched_idx = np.argmin(face_recognition.face_distance(self.known_face_encodings, face_encoding))
-                # name, roll_no = self.known_names[matched_idx], self.known_roll_nos[matched_idx]
-                distances = face_recognition.face_distance(self.known_face_encodings, face_encoding) #ye waala line add kiya hai
-                matched_idx = np.argmin(distances) #ye waala line add kiya hai
-                confidence = (1 - distances[matched_idx]) * 100 #ye waala line add kiya hai
-                name = f"{self.known_names[matched_idx]} ({confidence:.1f}%)" #ye waala line add kiya hai
-                roll_no = self.known_roll_nos[matched_idx] #ye waala line add kiya hai
-            self.recognized_faces.append((roll_no, name))
-        
-        # Display results in app
-        # self.show_recognition_results(self.recognized_faces)
-        # DEBUG MODE: Ask for confirmation before marking attendance
-        if self.recognized_faces:
-            names_list = "\n".join([f"{name} (Roll No: {roll_no})" for roll_no, name in self.recognized_faces])
-            dialog = MDDialog(
-                title="Confirm Attendance Marking",
-                text=f"The following students were recognized:\n\n{names_list}\n\nDo you want to mark them present?",
-                buttons=[
-                    MDFlatButton(text="Cancel", on_press=lambda x: dialog.dismiss()),
-                    MDRaisedButton(
-                        text="Mark Present",
-                        on_press=lambda x: (self.mark_attendance(), dialog.dismiss())
-                    )
-                ]
-            )
-            dialog.open()
-        else:
-            toast("No recognizable faces found.")
-
-    def show_user_menu(self):
-        # Implement user account options
-        pass
-
-    def mark_attendance(self):
-        db = None
-        cursor = None
-        try:
-            db = mysql.connector.connect(**self.db_config)
-            cursor = db.cursor()
-
-            current_date = date.today().strftime('%Y-%m-%d')
-            marked_students = []
-
-            # recognized_rolls = [int(roll_no) for roll_no, _ in self.recognized_faces if roll_no != "N/A"]
-            recognized_rolls = [str(roll_no) for roll_no, _ in self.recognized_faces if roll_no != "N/A"]
-
-            # Get all registered students
-            cursor.execute("SELECT roll_no, name FROM student_info")
-            all_students = cursor.fetchall()
-
-            for student_roll, student_name in all_students:
-                # Check if attendance for today already exists
-                cursor.execute(
-                    "SELECT * FROM attendance WHERE roll_no = %s AND date = %s",
-                    (student_roll, current_date)
-                )
-                existing = cursor.fetchone()
-
-                # if student_roll in recognized_rolls:
-                if str(student_roll) in recognized_rolls:
-                    # Mark Present
-                    if existing:
-                        cursor.execute(
-                            "UPDATE attendance SET attendance = 'P' WHERE roll_no = %s AND date = %s",
-                            (student_roll, current_date)
-                        )
-                    else:
-                        cursor.execute(
-                            "INSERT INTO attendance (roll_no, date, attendance) VALUES (%s, %s, 'P')",
-                            (student_roll, current_date)
-                        )
-                    marked_students.append(f"{student_name} (Roll No: {student_roll}) - Present")
+    def recognize_faces(self):
+        if self.capture:
+            ret, frame = self.capture.read()
+            if ret:
+                data = self.attendance.recognize_from_image(frame)
+                if data:
+                    self.show_recognition_dialog(data)
                 else:
-                    # Mark Absent only if not already marked
-                    if not existing:
-                        cursor.execute(
-                            "INSERT INTO attendance (roll_no, date, attendance) VALUES (%s, %s, 'A')",
-                            (student_roll, current_date)
-                        )
-                        marked_students.append(f"{student_name} (Roll No: {student_roll}) - Absent")
+                    self.show_dialog("No faces recognized", "Please try again with a different image.")
 
-            db.commit()
-
-            if marked_students:
-                message = "Attendance marked:\n\n" + "\n".join(marked_students)
-                self.show_success_dialog(message)
-            else:
-                self.show_info_dialog("No valid students to mark attendance.")
-
-            cursor.close()
-            db.close()
-
-        except mysql.connector.Error as err:
-            if db is not None and db.is_connected():
-                cursor.close()
-                db.close()
-            self.show_error_dialog(f"MySQL Error: {str(err)}")
-        except Exception as e:
-            if db is not None and db.is_connected():
-                cursor.close()
-                db.close()
-            self.show_error_dialog(f"Error: {str(e)}")
-
-
-    def mark_attendance_from_image(self, image_path):
-        """Marks attendance from a group photo"""
-        try:
-            image = cv2.imread(image_path)
-            if image is None:
-                self.show_error_dialog("Unable to load image.")
-                return
-
-            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            face_locations = face_recognition.face_locations(rgb_image)
-            face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
-
-            recognized_rolls = set()
-
-            for face_encoding in face_encodings:
-                matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
-                face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
-
-                best_match_index = np.argmin(face_distances)
-                if matches[best_match_index]:
-                    recognized_rolls.add(self.known_roll_nos[best_match_index])
-
-            if not recognized_rolls:
-                self.show_info_dialog("No recognizable faces found in the uploaded image.")
-                return
-
-            # Mark attendance (same logic as existing `mark_attendance`)
-            db = get_db_connection()
-            cursor = db.cursor()
-            current_date = date.today().strftime('%Y-%m-%d')
-            marked_students = []
-
-            cursor.execute("SELECT roll_no, name FROM student_info")
-            all_students = cursor.fetchall()
-
-            for student_roll, student_name in all_students:
-                cursor.execute(
-                    "SELECT * FROM attendance WHERE roll_no = %s AND date = %s",
-                    (student_roll, current_date)
-                )
-                existing = cursor.fetchone()
-
-                if str(student_roll) in recognized_rolls:
-                    if existing:
-                        cursor.execute(
-                            "UPDATE attendance SET attendance = 'P' WHERE roll_no = %s AND date = %s",
-                            (student_roll, current_date)
-                        )
-                    else:
-                        cursor.execute(
-                            "INSERT INTO attendance (roll_no, date, attendance) VALUES (%s, %s, 'P')",
-                            (student_roll, current_date)
-                        )
-                    marked_students.append(f"{student_name} (Roll No: {student_roll}) - Present")
+    def mark_attendance_from_camera(self):
+        if self.capture:
+            ret, frame = self.capture.read()
+            if ret:
+                data = self.attendance.recognize_from_image(frame)
+                if data:
+                    recognized = []
+                    for roll, conf in data:
+                        name = self.get_student_name(roll)
+                        recognized.append({"roll_no": roll, "name": name, "confidence": round(conf, 2)})
+                    self.show_attendance_confirmation(recognized)
                 else:
-                    if not existing:
-                        cursor.execute(
-                            "INSERT INTO attendance (roll_no, date, attendance) VALUES (%s, %s, 'A')",
-                            (student_roll, current_date)
-                        )
-                        marked_students.append(f"{student_name} (Roll No: {student_roll}) - Absent")
+                    self.show_dialog("No students recognized", "Try again.")
 
-            db.commit()
-            cursor.close()
-            db.close()
+    def show_attendance_confirmation(self, recognized_students):
+        message = "The following students were recognized:\n\n"
+        for student in recognized_students:
+            message += f"{student['name']} ({student['confidence']}%) (Roll No: {student['roll_no']})\n"
+        message += "\nDo you want to mark them present?"
 
-            message = "Attendance marked from image:\n\n" + "\n".join(marked_students)
-            self.show_success_dialog(message)
-
-        except Exception as e:
-            self.show_error_dialog(f"Error processing image: {str(e)}")
-
-    def upload_group_photo(self):
-        filechooser.open_file(on_selection=self._on_group_photo_selected,
-                            filters=[("Image Files", "*.jpg", "*.jpeg", "*.png")])
-        
-    def _on_group_photo_selected(self, selection):
-        if selection:
-            self.mark_attendance_from_image(selection[0])
-
-    def open_store_face_dialog(self):
-        """Open Dialog to Store or Update Face Data"""
-        content = MDBoxLayout(
-            orientation="vertical",
-            spacing="20dp",
-            size_hint_y=None,
-            height="300dp",  # Increased height
-            padding="20dp"   # Added padding
-        )
-        
-        # Add a spacer at the top
-        content.add_widget(MDBoxLayout(size_hint_y=None, height="10dp"))
-        
-        roll_no_field = MDTextField(hint_text="Enter Roll No")
-        roll_no_field.id = "roll_no"
-        content.add_widget(roll_no_field)
-        
-        name_field = MDTextField(hint_text="Enter Name")
-        name_field.id = "name"
-        content.add_widget(name_field)
-        
-        course_field = MDTextField(hint_text="Enter Course")
-        course_field.id = "course"
-        content.add_widget(course_field)
-        
-        dob_field = MDTextField(hint_text="DOB (YYYY-MM-DD)")
-        dob_field.id = "dob"
-        content.add_widget(dob_field)
-        
+        self.pending_recognized = recognized_students
         self.dialog = MDDialog(
-            title="Store Face Data",
-            type="custom",
-            content_cls=content,
+            title="Confirm Attendance Marking",
+            text=message,
             buttons=[
-                MDFlatButton(text="Cancel", on_press=lambda x: self.dialog.dismiss()),
-                MDFlatButton(text="Load from Image", on_press=self.open_file_chooser),
-                MDRaisedButton(text="Capture from Camera", on_press=self.capture_face_data)
+                MDFlatButton(text="Cancel", on_release=lambda x: self.dialog.dismiss()),
+                MDRaisedButton(text="Mark Present", on_release=self.confirm_attendance)
             ]
         )
         self.dialog.open()
-        
-        # Store references to fields for easier access
-        self.dialog.roll_no_field = roll_no_field
-        self.dialog.name_field = name_field
-        self.dialog.course_field = course_field
-        self.dialog.dob_field = dob_field
-        
-        # Bind to roll_no changes
-        roll_no_field.bind(text=self.on_roll_no_change)
-        # toast("Face stored successfully!") #toast
+
+    def confirm_attendance(self, instance):
+        self.dialog.dismiss()
+        today = date.today().strftime('%Y-%m-%d')
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT roll_no FROM student_info")
+        all_rolls = [row[0] for row in cursor.fetchall()]
+        # present_rolls = [s['roll_no'] for s in self.pending_recognized]
+        present_rolls = [str(s['roll_no']) for s in self.pending_recognized]
+        print("Present rolls:", present_rolls)
 
 
+        for roll in all_rolls:
+            roll = str(roll).strip()
+            cursor.execute("SELECT * FROM attendance WHERE roll_no = %s AND date = %s", (roll, today))
+            if cursor.fetchone():
+                continue
+            status = 'P' if roll in present_rolls else 'A'
+            cursor.execute("INSERT INTO attendance (roll_no, date, attendance) VALUES (%s, %s, %s)", (roll, today, status))
+            print(f"Marking {roll} as {'Present' if status == 'P' else 'Absent'}")
 
-    def store_face_encoding(self, roll_no, name, course, dob, face_encoding):
-        """Store face encoding in database"""
-        # Convert numpy array to bytes for storage
-        face_encoding_bytes = face_encoding.tobytes()
-        
-        db = get_db_connection()
-        if not db:
-            return
-        try:
-            cursor = db.cursor()
-            
-            # Check if student already exists
-            cursor.execute("SELECT * FROM student_info WHERE roll_no = %s", (roll_no,))
-            existing_student = cursor.fetchone()
-            
-            if existing_student:
-                # Update existing student
-                cursor.execute(
-                    "UPDATE student_info SET name = %s, course = %s, dob = %s, face_id = %s WHERE roll_no = %s",
-                    (name, course, dob, face_encoding_bytes, roll_no)
-                )
-                self.show_success_dialog(f"Student data updated successfully for {name} (Roll No: {roll_no})")
-                toast(f"🔄 {name} updated successfully!")
 
+        conn.commit()
+        conn.close()
+
+        toast("Attendance successfully marked.")
+
+    def upload_group_photo(self):
+        filechooser.open_file(on_selection=self.process_image)
+
+    def process_image(self, selection):
+        if selection:
+            image = cv2.imread(selection[0])
+            data = self.attendance.recognize_from_image(image)
+            if data:
+                recognized = []
+                for roll, conf in data:
+                    name = self.get_student_name(roll)
+                    recognized.append({"roll_no": roll, "name": name, "confidence": round(conf, 2)})
+                self.show_attendance_confirmation(recognized)
             else:
-                # Insert new student
-                cursor.execute(
-                    "INSERT INTO student_info (roll_no, name, course, dob, face_id) VALUES (%s, %s, %s, %s, %s)",
-                    (roll_no, name, course, dob, face_encoding_bytes)
-                )
-                self.show_success_dialog(f"New student added: {name} (Roll No: {roll_no})")
-                toast(f"{name} added successfully!")
+                self.show_dialog("No students recognized", "Try again.")
 
-            
-            db.commit()
-            
-            # Update local face data cache
-            self.known_face_encodings, self.known_names, self.known_roll_nos = load_known_faces()
-        except mysql.connector.Error as err:
-            self.show_error_dialog(f"Database error: {err}")
-        finally:
-            cursor.close()
-            db.close()
-            if self.dialog:
-                self.dialog.dismiss()
-                self.dialog = None
 
-    def show_error_dialog(self, message):
-        """Show error dialog with message"""
-        dialog = MDDialog(
-            title="Error",
-            text=message,
-            buttons=[MDFlatButton(text="OK", on_press=lambda x: dialog.dismiss())]
-        )
+    def show_recognition_dialog(self, data):
+        content = MDBoxLayout(orientation="vertical", spacing="12dp")
+        for roll, conf in data:
+            name = self.get_student_name(roll)
+            content.add_widget(MDLabel(text=f"{name} ({roll}) - {conf:.1f}%", theme_text_color="Primary"))
+        self.dialog = MDDialog(title="Recognized Faces", type="custom", content_cls=content,
+                               buttons=[MDFlatButton(text="Close", on_release=lambda x: self.dialog.dismiss())])
+        self.dialog.open()
+
+    def open_store_face_dialog(self, *args):
+        dialog = StoreFaceDialog()
         dialog.open()
 
-    def show_success_dialog(self, message):
-        """Show success dialog with message"""
-        dialog = MDDialog(
-            title="Success",
-            text=message,
-            buttons=[
-                MDFlatButton(text="OK", on_press=lambda x: dialog.dismiss())
-            ]
-        )
-        dialog.open()
+    def get_student_name(self, roll):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM student_info WHERE roll_no=%s", (roll,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else "Unknown"
 
-    def on_roll_no_change(self, instance, value):
-        """Load student data when roll number is entered"""
-        if not value.strip():
-            return
-            
-        try:
-            roll_no = int(value)
-            db = get_db_connection()
-            if not db:
+    def show_dialog(self, title, text):
+        self.dialog = MDDialog(title=title, text=text, buttons=[MDFlatButton(text="OK", on_release=lambda x: self.dialog.dismiss())])
+        self.dialog.open()
+
+    def show_date_picker(self, field):
+        date_dialog = MDDatePicker()
+        date_dialog.bind(on_save=lambda instance, value, date_range: self.on_date_save(field, value))
+        date_dialog.open()
+
+    def on_date_save(self, field, value):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        if field == "start":
+            screen.start_date = value
+            self.root.ids.screen_manager.get_screen("dashboard").ids.start_date.text = value.strftime('%Y-%m-%d')
+        else:
+            screen.end_date = value
+            self.root.ids.screen_manager.get_screen("dashboard").ids.end_date.text = value.strftime('%Y-%m-%d')
+
+    def show_student_dropdown(self, caller):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("SELECT roll_no, name FROM student_info")
+        students = [(row[0], row[1]) for row in cursor.fetchall()]
+        conn.close()
+
+        menu_items = [
+            {
+                "text": f"{name} ({roll})",
+                "viewclass": "OneLineListItem",
+                "on_release": lambda x=(roll, name): self.set_student(x)
+            } for roll, name in students
+        ]
+        menu_items.append({
+            "text": "All Students",
+            "viewclass": "OneLineListItem",
+            "on_release": lambda x=None: self.set_student(None)
+        })
+
+        self.student_menu = MDDropdownMenu(
+            caller=caller,
+            items=menu_items,
+            width_mult=4,
+        )
+        self.student_menu.open()
+
+    def show_course_dropdown(self, caller):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT course FROM student_info")
+        courses = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        menu_items = [
+            {
+                "text": course,
+                "viewclass": "OneLineListItem",
+                "on_release": lambda x=course: self.set_course(x)
+            } for course in courses
+        ]
+        menu_items.append({
+            "text": "All Courses",
+            "viewclass": "OneLineListItem",
+            "on_release": lambda x=None: self.set_course(None)
+        })
+
+        self.course_menu = MDDropdownMenu(
+            caller=caller,
+            items=menu_items,
+            width_mult=4,
+        )
+        self.course_menu.open()
+
+
+    def show_attendance_range_dropdown(self, caller):
+        ranges = [
+            ("Below 50%", (0, 50)),
+            ("50% to 70%", (50, 70)),
+            ("Above 75%", (75, 100)),
+            ("All Ranges", None)
+        ]
+        menu_items = [
+            {
+                "text": range_name,
+                "viewclass": "OneLineListItem",
+                "on_release": lambda x=range_val, y=range_name: self.set_attendance_range(x, y)
+            } for range_name, range_val in ranges
+        ]
+        self.attendance_range_menu = MDDropdownMenu(
+            caller=caller,
+            items=menu_items,
+            width_mult=4,
+        )
+        self.attendance_range_menu.open()
+
+    def set_attendance_range(self, range_val, range_name):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        screen.selected_attendance_range = range_val
+        screen.ids.attendance_range_dropdown.text = range_name  # Update dropdown text
+        if self.attendance_range_menu:
+            self.attendance_range_menu.dismiss()
+        self.update_dashboard()  # Refresh dashboard to apply the filter
+
+    def set_student(self, student):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        screen.selected_student = student
+        if student:
+            self.root.ids.screen_manager.get_screen("dashboard").ids.student_dropdown.text = f"{student[1]} ({student[0]})"
+        else:
+            self.root.ids.screen_manager.get_screen("dashboard").ids.student_dropdown.text = "All Students"
+        self.student_menu.dismiss()
+
+    def set_course(self, course):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        screen.selected_course = course
+        self.root.ids.screen_manager.get_screen("dashboard").ids.course_dropdown.text = course if course else "All Courses"
+        self.course_menu.dismiss()
+
+    def update_dashboard(self):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+
+        # Determine filtering mode
+        start_date = screen.start_date
+        end_date = screen.end_date
+        selected_student = screen.selected_student
+        selected_course = screen.selected_course
+        selected_attendance_range = screen.selected_attendance_range
+
+        # Set fallback range if dates are not selected
+        if not start_date or not end_date:
+            conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            conn.close()
+
+            if result and result[0] and result[1]:
+                start_date = result[0]
+                end_date = result[1]
+            else:
+                toast("No attendance records found.")
                 return
-                
-            cursor = db.cursor()
-            cursor.execute("SELECT name, course, dob FROM student_info WHERE roll_no = %s", (roll_no,))
-            student = cursor.fetchone()
-            cursor.close()
-            db.close()
-            
-            if student:
-                # Populate fields with existing data
-                self.dialog.name_field.text = student[0]
-                self.dialog.course_field.text = student[1]
-                self.dialog.dob_field.text = student[2].strftime("%Y-%m-%d") if student[2] else ""
-        except (ValueError, AttributeError, mysql.connector.Error) as e:
-            print(f"Error loading student data: {e}")
 
-    def show_info_dialog(self, message):
-        """Show information dialog with message"""
-        dialog = MDDialog(
-            title="Information",
-            text=message,
-            buttons=[
-                MDFlatButton(text="OK", on_press=lambda x: dialog.dismiss())
-            ]
-        )
-        dialog.open()
+        # Handle student-specific graphs
+        if selected_student:
+            self.generate_individual_trend(start_date, end_date, selected_student)
+            self.generate_overall_stats(start_date, end_date, selected_student, selected_course)
+        else:
+            self.generate_individual_trend(start_date, end_date, None)
+            self.generate_overall_stats(start_date, end_date, None, selected_course)
+            self.generate_attendance_heatmap(start_date, end_date)
 
-    def show_recognition_results(self, faces):
-        """Display recognition results in the app"""
-        if not faces:
-            self.show_info_dialog("No faces recognized")
+        # Generate the daily attendance rate graph (not student-specific)
+        self.generate_daily_attendance_rate(start_date, end_date)
+
+        # Always load summary and records
+        self.load_dashboard_summary()
+        self.load_attendance_records()
+        self.load_editable_attendance()
+        self.load_attendance_range_list()  # Load attendance range list
+
+    def export_filtered_data_to_csv(self):
+        from datetime import datetime
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        start_date = screen.start_date
+        end_date = screen.end_date
+        selected_student = screen.selected_student
+        selected_course = screen.selected_course
+        selected_attendance_range = screen.selected_attendance_range
+
+        # Set fallback date range if not provided
+        if not start_date or not end_date:
+            conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            conn.close()
+            start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+            end_date = result[1] if result and result[1] else datetime.now().date()
+
+        # Build the query
+        query = """
+            SELECT a.date, a.roll_no, s.name, s.course, a.attendance,
+                # COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(a2.*) AS attendance_percentage
+                # COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(a2.attendance) AS attendance_percentage
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            LEFT JOIN attendance a2 ON a.roll_no = a2.roll_no
+            WHERE a.date BETWEEN %s AND %s
+        """
+        query += " GROUP BY a.date, a.roll_no, s.name, s.course, a.attendance ORDER BY a.date DESC"
+        params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+
+        if selected_student:
+            query += " AND a.roll_no = %s"
+            params.append(selected_student[0])
+        if selected_course:
+            query += " AND s.course = %s"
+            params.append(selected_course)
+        if selected_attendance_range:
+            min_percent, max_percent = selected_attendance_range
+            query += """
+                AND a.roll_no IN (
+                    SELECT sub.roll_no
+                    FROM (
+                        SELECT a2.roll_no,
+                            COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+                        FROM attendance a2
+                        WHERE a2.date BETWEEN %s AND %s
+                        GROUP BY a2.roll_no
+                        HAVING percentage BETWEEN %s AND %s
+                    ) sub
+                )
+            """
+            params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), min_percent, max_percent])
+
+        query += " GROUP BY a.date, a.roll_no, s.name, s.course, a.attendance ORDER BY a.date DESC"
+
+        # Execute query
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        data = cursor.fetchall()
+        conn.close()
+
+        if not data:
+            toast("No data available to export.")
             return
-            
-        # Create a results layout
-        content = MDBoxLayout(
-            orientation="vertical",
-            spacing="10dp",
-            size_hint_y=None,
-            height=dp(50 + len(faces) * 50)  # Adjust height based on number of faces
-        )
-        
-        content.add_widget(MDLabel(
-            text="Recognized Faces:",
-            font_style="H6",
-            size_hint_y=None,
-            height=dp(30)
-        ))
-        
-        for roll_no, name in faces:
-            content.add_widget(MDLabel(
-                text=f"{name} (Roll No: {roll_no})",
+
+        # Create DataFrame
+        df = pd.DataFrame(data, columns=['Date', 'Roll No', 'Name', 'Course', 'Attendance', 'Attendance Percentage'])
+        df['Attendance Percentage'] = df['Attendance Percentage'].round(2)
+
+        # Define default filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"attendance_export_{timestamp}.csv"
+
+        # Open file chooser to select save location
+        def save_csv(selection):
+            if selection:
+                file_path = selection[0]
+                if not file_path.endswith('.csv'):
+                    file_path += '.csv'
+                try:
+                    df.to_csv(file_path, index=False)
+                    toast(f"Data exported successfully to {file_path}")
+                except Exception as e:
+                    toast(f"Error exporting CSV: {e}")
+            else:
+                toast("Export cancelled.")
+
+        filechooser.save_file(on_selection=save_csv, title="Save CSV File", filters=[("CSV Files", "*.csv")], filename=default_filename)
+
+    def generate_daily_attendance_rate(self, start_date, end_date):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        # Handle None values with fallback
+        if start_date is None or end_date is None:
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+            end_date = result[1] if result and result[1] else datetime.now().date()
+
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        selected_attendance_range = screen.selected_attendance_range
+
+        query = """
+            SELECT a.date, 
+                COUNT(CASE WHEN a.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) as attendance_rate
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            WHERE a.date BETWEEN %s AND %s
+        """
+        params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+
+        if selected_attendance_range:
+            min_percent, max_percent = selected_attendance_range
+            query += """
+                AND a.roll_no IN (
+                    SELECT sub.roll_no
+                    FROM (
+                        SELECT a2.roll_no,
+                               COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+                        FROM attendance a2
+                        WHERE a2.date BETWEEN %s AND %s
+                        GROUP BY a2.roll_no
+                        HAVING percentage BETWEEN %s AND %s
+                    ) sub
+                )
+            """
+            params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), min_percent, max_percent])
+
+        query += " GROUP BY a.date ORDER BY a.date"
+
+        cursor.execute(query, params)
+        data = cursor.fetchall()
+        conn.close()
+
+        if not data:
+            toast("No data for daily attendance rate.")
+            return
+
+        df = pd.DataFrame(data, columns=['Date', 'AttendanceRate'])
+        df['Date'] = pd.to_datetime(df['Date'])
+
+        plt.figure(figsize=(5, 3.5))
+        sns.lineplot(data=df, x='Date', y='AttendanceRate', marker='o', color='teal')
+        plt.title("Daily Attendance Rate", fontsize=12)
+        plt.xlabel("Date", fontsize=10)
+        plt.ylabel("Attendance Rate (%)", fontsize=10)
+        plt.xticks(rotation=45, fontsize=8)
+        plt.yticks(fontsize=8)
+        plt.grid(True)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+        image = CoreImage(buf, ext='png')
+        self.root.ids.screen_manager.get_screen("dashboard").ids.daily_attendance_rate.texture = image.texture
+        buf.close()
+
+    def generate_overall_stats(self, start_date, end_date, selected_student, selected_course):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        # Handle None values with fallback
+        if start_date is None or end_date is None:
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+            end_date = result[1] if result and result[1] else datetime.now().date()
+
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        selected_attendance_range = screen.selected_attendance_range
+
+        query = """
+            SELECT a.attendance, COUNT(*) 
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            WHERE a.date BETWEEN %s AND %s
+        """
+        params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+
+        if selected_student:
+            query += " AND a.roll_no = %s"
+            params.append(selected_student[0])
+        if selected_course:
+            query += " AND s.course = %s"
+            params.append(selected_course)
+        if selected_attendance_range:
+            min_percent, max_percent = selected_attendance_range
+            query += """
+                AND a.roll_no IN (
+                    SELECT sub.roll_no
+                    FROM (
+                        SELECT a2.roll_no,
+                               COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+                        FROM attendance a2
+                        WHERE a2.date BETWEEN %s AND %s
+                        GROUP BY a2.roll_no
+                        HAVING percentage BETWEEN %s AND %s
+                    ) sub
+                )
+            """
+            params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), min_percent, max_percent])
+
+        query += " GROUP BY a.attendance"
+
+        cursor.execute(query, params)
+        data = cursor.fetchall()
+        conn.close()
+
+        if not data:
+            toast("No data found for overall stats.")
+            return
+
+        df = pd.DataFrame(data, columns=['Attendance', 'Count'])
+
+        sns.set_style("whitegrid")
+        plt.figure(figsize=(5, 3.5))
+        chart = sns.barplot(data=df, x='Attendance', y='Count', palette='pastel')
+        chart.bar_label(chart.containers[0], fontsize=8)
+        plt.title("Attendance Stats", fontsize=12)
+        plt.xlabel("Attendance", fontsize=10)
+        plt.ylabel("Count", fontsize=10)
+        plt.xticks(fontsize=8)
+        plt.yticks(fontsize=8)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+
+        image = CoreImage(buf, ext='png')
+        self.root.ids.screen_manager.get_screen("dashboard").ids.overall_stats.texture = image.texture
+        buf.close()
+
+
+    def generate_individual_trend(self, start_date, end_date, selected_student):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        # Handle None values with fallback
+        if start_date is None or end_date is None:
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+            end_date = result[1] if result and result[1] else datetime.now().date()
+
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        selected_attendance_range = screen.selected_attendance_range
+
+        query = """
+            SELECT a.date, a.attendance 
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            WHERE a.date BETWEEN %s AND %s
+        """
+        params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+
+        if selected_student:
+            query += " AND a.roll_no = %s"
+            params.append(selected_student[0])
+        elif selected_attendance_range:
+            min_percent, max_percent = selected_attendance_range
+            query += """
+                AND a.roll_no IN (
+                    SELECT sub.roll_no
+                    FROM (
+                        SELECT a2.roll_no,
+                               COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+                        FROM attendance a2
+                        WHERE a2.date BETWEEN %s AND %s
+                        GROUP BY a2.roll_no
+                        HAVING percentage BETWEEN %s AND %s
+                    ) sub
+                )
+            """
+            params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), min_percent, max_percent])
+
+        cursor.execute(query, params)
+        data = cursor.fetchall()
+        conn.close()
+
+        if not data:
+            toast("No individual attendance data.")
+            return
+
+        df = pd.DataFrame(data, columns=['Date', 'Attendance'])
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.sort_values('Date', inplace=True)
+        df['AttendanceNum'] = df['Attendance'].map({'P': 1, 'A': 0})
+
+        plt.figure(figsize=(5, 3.5))
+        sns.lineplot(data=df, x='Date', y='AttendanceNum', marker='o')
+        plt.yticks([0, 1], ['Absent', 'Present'], fontsize=8)
+        plt.title("Attendance Trend", fontsize=12)
+        plt.xlabel("Date", fontsize=10)
+        plt.ylabel("Status", fontsize=10)
+        plt.xticks(rotation=45, fontsize=8)
+        plt.grid(True)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+
+        image = CoreImage(buf, ext='png')
+        self.root.ids.screen_manager.get_screen("dashboard").ids.individual_trend.texture = image.texture
+        buf.close()
+
+    def generate_attendance_heatmap(self, start_date, end_date):
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        # Handle None values with fallback
+        if start_date is None or end_date is None:
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+            end_date = result[1] if result and result[1] else datetime.now().date()
+
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        selected_attendance_range = screen.selected_attendance_range
+
+        query = """
+            SELECT a.date, a.attendance 
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            WHERE a.date BETWEEN %s AND %s
+        """
+        params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+
+        if selected_attendance_range:
+            min_percent, max_percent = selected_attendance_range
+            query += """
+                AND a.roll_no IN (
+                    SELECT sub.roll_no
+                    FROM (
+                        SELECT a2.roll_no,
+                               COUNT(CASE WHEN a2.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+                        FROM attendance a2
+                        WHERE a2.date BETWEEN %s AND %s
+                        GROUP BY a2.roll_no
+                        HAVING percentage BETWEEN %s AND %s
+                    ) sub
+                )
+            """
+            params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), min_percent, max_percent])
+
+        cursor.execute(query, params)
+        data = cursor.fetchall()
+        conn.close()
+
+        if not data:
+            toast("No data for heatmap.")
+            return
+
+        df = pd.DataFrame(data, columns=["Date", "Attendance"])
+        df['Date'] = pd.to_datetime(df['Date'])
+        df['Day'] = df['Date'].dt.date
+        df['Count'] = df['Attendance'].map({'P': 1, 'A': 0})
+
+        heatmap_df = df.groupby('Day').agg({'Count': 'sum'}).reset_index()
+        heatmap_df = heatmap_df.set_index('Day')
+
+        plt.figure(figsize=(5, 3.5))
+        sns.heatmap(heatmap_df.T, cmap='YlGnBu', cbar=True, linewidths=0.5, annot=True, fmt='.0f', annot_kws={"size": 8})
+        plt.title("Daily Present Count", fontsize=12)
+        plt.yticks(rotation=0, fontsize=8)
+        plt.xticks(rotation=45, fontsize=8)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+        image = CoreImage(buf, ext='png')
+        self.root.ids.screen_manager.get_screen("dashboard").ids.heatmap_graph.texture = image.texture
+        buf.close()
+
+    def load_dashboard_summary(self):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        # Total Students
+        cursor.execute("SELECT COUNT(*) FROM student_info")
+        screen.ids.total_students.text = str(cursor.fetchone()[0])
+
+        # Total Attendance Records
+        cursor.execute("SELECT COUNT(*) FROM attendance")
+        screen.ids.total_records.text = str(cursor.fetchone()[0])
+
+        # Class Average Attendance
+        cursor.execute("""
+            SELECT AVG(sub.att_rate) FROM (
+                SELECT COUNT(CASE WHEN attendance = 'P' THEN 1 END) / COUNT(*) * 100 as att_rate
+                FROM attendance GROUP BY roll_no
+            ) as sub
+        """)
+        avg = cursor.fetchone()[0]
+        screen.ids.class_avg.text = f"{round(avg or 0, 2)}%"
+
+        # Load top 5 students
+        cursor.execute("""
+            SELECT s.name, s.roll_no,
+                COUNT(CASE WHEN a.attendance = 'P' THEN 1 END) AS present_days,
+                COUNT(*) AS total_days,
+                COUNT(CASE WHEN a.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+            FROM student_info s
+            JOIN attendance a ON s.roll_no = a.roll_no
+            GROUP BY s.roll_no
+            ORDER BY present_days DESC
+            LIMIT 5
+
+        """)
+        data = cursor.fetchall()
+        conn.close()
+
+        icons = ['medal', 'medal-outline', 'medal-outline', 'star-outline', 'star-outline']
+        colors = [
+            (1, 0.84, 0, 1),     # Gold
+            (0.75, 0.75, 0.75, 1),  # Silver
+            (0.8, 0.5, 0.2, 1),  # Bronze
+            (0.3, 0.5, 0.9, 1),  # Blue
+            (0.3, 0.8, 0.3, 1)   # Green
+        ]
+
+        leaderboard = screen.ids.leaderboard_cards  # ✅ Fix: define it here
+        leaderboard.clear_widgets()  # Optional: clear previous entries
+
+        for i, row in enumerate(data):
+
+            name, roll, present_days, total_days, percentage = row
+
+
+            card = MDCard(
+                orientation='horizontal',
+                padding="8dp",
                 size_hint_y=None,
-                height=dp(30)
-            ))
-        
+                height="48dp",
+                md_bg_color=(1, 1, 1, 0.05),
+                radius=[12, 12, 12, 12]
+            )
+
+            icon = MDIconButton(
+                icon=icons[i],
+                theme_text_color="Custom",
+                text_color=colors[i],
+                icon_size="24sp"
+            )
+
+            name_label = MDLabel(
+                text=f"{name} ({roll})",
+                halign="left",
+                theme_text_color="Primary"
+            )
+
+            count_label = MDLabel(
+                text=f"{present_days} Days | {percentage:.1f}%",
+                halign="right",
+                theme_text_color="Secondary"
+            )
+
+
+            card.add_widget(icon)
+            card.add_widget(name_label)
+            card.add_widget(count_label)
+            leaderboard.add_widget(card)
+
+
+    def load_attendance_records(self):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        attendance_list = screen.ids.attendance_list
+        attendance_list.clear_widgets()
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT a.date, a.roll_no, s.name, a.attendance
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            ORDER BY a.date DESC
+            LIMIT 50
+        """)
+        data = cursor.fetchall()
+        conn.close()
+
+        from kivymd.uix.list import OneLineAvatarIconListItem, IconLeftWidget
+
+        for date_, roll, name, status in data:
+            icon = "check-circle" if status == 'P' else "close-circle"
+            icon_color = (0, 0.6, 0, 1) if status == 'P' else (0.8, 0, 0, 1)
+
+            item = OneLineAvatarIconListItem(text=f"{date_} - {name} ({roll}) - {status}")
+            item.add_widget(IconLeftWidget(icon=icon, theme_text_color="Custom", text_color=icon_color))
+            attendance_list.add_widget(item)
+
+    def load_editable_attendance(self):
+        from kivymd.uix.list import TwoLineRightIconListItem, IconRightWidget
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        editable_list = screen.ids.edit_attendance_list
+        editable_list.clear_widgets()
+
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT a.roll_no, s.name, a.attendance
+            FROM attendance a
+            JOIN student_info s ON a.roll_no = s.roll_no
+            WHERE a.date = %s
+            ORDER BY s.roll_no
+        """, (today,))
+        records = cursor.fetchall()
+        conn.close()
+
+        for roll, name, status in records:
+            item = TwoLineRightIconListItem(
+                text=f"{name} ({roll})",
+                secondary_text=f"Status: {'Present' if status == 'P' else 'Absent'}"
+            )
+
+            icon = IconRightWidget(
+                icon='swap-horizontal',  # looks like a toggle
+                on_release=lambda instance, r=roll, n=name, s=status: self.confirm_toggle_attendance(r, n, s)
+
+            )
+
+            item.add_widget(icon)
+            editable_list.add_widget(item)
+
+    def load_attendance_range_list(self):
+        screen = self.root.ids.screen_manager.get_screen("dashboard")
+        attendance_list = screen.ids.attendance_range_list
+        attendance_list.clear_widgets()
+
+        start_date = screen.start_date
+        end_date = screen.end_date
+        selected_course = screen.selected_course
+        selected_attendance_range = screen.selected_attendance_range
+
+        # Set default date range if not provided
+        if not start_date or not end_date:
+            conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(date), MAX(date) FROM attendance")
+            result = cursor.fetchone()
+            conn.close()
+            start_date = result[0] if result and result[0] else datetime(2024, 1, 1).date()
+            end_date = result[1] if result and result[1] else datetime.now().date()
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+
+        query = """
+            SELECT s.roll_no, s.name, s.course,
+                COUNT(CASE WHEN a.attendance = 'P' THEN 1 END) * 100.0 / COUNT(*) AS percentage
+            FROM student_info s
+            LEFT JOIN attendance a ON s.roll_no = a.roll_no
+            WHERE a.date BETWEEN %s AND %s
+        """
+        params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+
+        if selected_course:
+            query += " AND s.course = %s"
+            params.append(selected_course)
+
+        query += " GROUP BY s.roll_no, s.name, s.course HAVING percentage IS NOT NULL"
+
+        cursor.execute(query, params)
+        data = cursor.fetchall()
+        conn.close()
+
+        from kivymd.uix.list import OneLineAvatarIconListItem, IconLeftWidget
+
+        filtered_data = []
+        if selected_attendance_range:
+            min_percent, max_percent = selected_attendance_range
+            filtered_data = [
+                row for row in data
+                if min_percent <= row[3] <= max_percent
+            ]
+        else:
+            filtered_data = data
+
+        for roll, name, course, percentage in filtered_data:
+            icon = "account"
+            item = OneLineAvatarIconListItem(
+                text=f"{name} ({roll}) - {course} - {percentage:.1f}%"
+            )
+            item.add_widget(IconLeftWidget(icon=icon))
+            attendance_list.add_widget(item)
+
+        if not filtered_data:
+            item = OneLineAvatarIconListItem(text="No students found for the selected range.")
+            item.add_widget(IconLeftWidget(icon="information-outline"))
+            attendance_list.add_widget(item)
+
+    def toggle_attendance(self, roll_no, current_status):
+        today = datetime.now().strftime('%Y-%m-%d')
+        new_status = 'A' if current_status == 'P' else 'P'
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE attendance SET attendance = %s
+            WHERE roll_no = %s AND date = %s
+        """, (new_status, roll_no, today))
+        conn.commit()
+        conn.close()
+
+        toast(f"{roll_no} marked as {'Present' if new_status == 'P' else 'Absent'}")
+        self.load_editable_attendance()  # Refresh the list
+        self.load_attendance_records()   # Refresh main display
+    
+    def confirm_toggle_attendance(self, roll_no, name, current_status):
+        new_status = 'A' if current_status == 'P' else 'P'
+        status_label = "Absent" if new_status == 'A' else "Present"
+
         dialog = MDDialog(
-            title="Face Recognition Results",
-            type="custom",
-            content_cls=content,
+            title="Confirm Attendance Update",
+            text=f"You are about to mark {name} ({roll_no}) as {status_label}.\nDo you want to continue?",
             buttons=[
-                MDFlatButton(text="Close", on_press=lambda x: dialog.dismiss()),
-                MDRaisedButton(text="Mark Attendance", on_press=lambda x: (self.mark_attendance(), dialog.dismiss()))
+                MDFlatButton(text="Cancel", on_release=lambda x: dialog.dismiss()),
+                MDRaisedButton(
+                    text="Confirm",
+                    on_release=lambda x: self.finalize_attendance_toggle(dialog, roll_no, new_status)
+                ),
             ]
         )
         dialog.open()
 
-    def open_file_chooser(self, instance):
-        """Open file chooser to select a face image"""
-        from plyer import filechooser
-        filechooser.open_file(on_selection=self.process_selected_image, 
-                            filters=[("Image Files", "*.jpg", "*.jpeg", "*.png")])
-        
-    def process_selected_image(self, selection):
-        """Process selected image file"""
-        if not selection:
-            return  # No file selected
-            
-        image_path = selection[0]
-        try:
-            # Read image and process face
+    def finalize_attendance_toggle(self, dialog, roll_no, new_status):
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE attendance SET attendance = %s
+            WHERE roll_no = %s AND date = %s
+        """, (new_status, roll_no, today))
+        conn.commit()
+        conn.close()
+
+        dialog.dismiss()
+        toast(f"{roll_no} marked as {'Present' if new_status == 'P' else 'Absent'}")
+        self.load_editable_attendance()
+        self.load_attendance_records()
+
+    def start_add_student_camera(self):
+        if not hasattr(self, 'add_student_capture') or not self.add_student_capture:
+            self.add_student_capture = cv2.VideoCapture(0)
+            Clock.schedule_interval(self.update_add_student_camera, 1.0 / 30.0)
+        toast("Camera started.")
+
+    def update_add_student_camera(self, dt):
+        if not hasattr(self, 'add_student_capture') or not self.add_student_capture:
+            return
+        ret, frame = self.add_student_capture.read()
+        if ret:
+            texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
+            texture.blit_buffer(cv2.flip(frame, 0).tobytes(), colorfmt='bgr', bufferfmt='ubyte')
+            self.root.ids.screen_manager.get_screen("add_student").ids.add_student_camera_feed.texture = texture
+
+    def stop_add_student_camera(self):
+        if hasattr(self, 'add_student_capture') and self.add_student_capture:
+            self.add_student_capture.release()
+            self.add_student_capture = None
+            Clock.unschedule(self.update_add_student_camera)
+            self.root.ids.screen_manager.get_screen("add_student").ids.add_student_camera_feed.texture = None
+
+    def upload_face_image(self):
+        filechooser.open_file(on_selection=self.process_uploaded_face_image)
+
+    def process_uploaded_face_image(self, selection):
+        if selection:
+            image_path = selection[0]
             image = cv2.imread(image_path)
             if image is None:
-                self.show_error_dialog("Failed to load image")
+                toast("Invalid image file.")
                 return
-                
-            self.process_face_image(image)
-        except Exception as e:
-            self.show_error_dialog(f"Error processing image: {e}")
+            rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            encodings = face_recognition.face_encodings(rgb)
+            if not encodings:
+                toast("No face detected in the image.")
+                return
+            self.face_image = image
+            # Update camera feed to show uploaded image
+            texture = Texture.create(size=(image.shape[1], image.shape[0]), colorfmt='bgr')
+            texture.blit_buffer(cv2.flip(image, 0).tobytes(), colorfmt='bgr', bufferfmt='ubyte')
+            self.root.ids.screen_manager.get_screen("add_student").ids.add_student_camera_feed.texture = texture
+            toast("Face image uploaded successfully!")
+    
+    def capture_face_for_add(self):
+        if hasattr(self, 'add_student_capture') and self.add_student_capture:
+            ret, frame = self.add_student_capture.read()
+            if not ret:
+                toast("Failed to capture from camera.")
+                return
+            self.stop_add_student_camera()
+        else:
+            toast("Please start the camera first.")
+            return
 
-    def capture_face_data(self, instance):
-        """Capture face from camera"""
-        if not self.capture or not self.capture.isOpened():
-            self.show_error_dialog("Camera not initialized. Please start the camera first.")
-            return
-            
-        ret, frame = self.capture.read()
-        if not ret:
-            self.show_error_dialog("Failed to capture image from camera")
-            return
-            
-        self.process_face_image(frame)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        encodings = face_recognition.face_encodings(rgb)
 
-    def process_face_image(self, image):
-        """Process face in the provided image"""
-        if self.dialog is None:
+        if not encodings:
+            toast("No face detected. Try again.")
             return
-            
-        # Get form data
-        roll_no = self.dialog.roll_no_field.text.strip()
-        name = self.dialog.name_field.text.strip()
-        course = self.dialog.course_field.text.strip()
-        dob = self.dialog.dob_field.text.strip()
-        
-        # Validate form data
-        if not roll_no or not name or not course:
-            self.show_error_dialog("Please fill in all required fields")
-            return
-            
+
+        self.face_image = frame
+        # Update camera feed to show captured image
+        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
+        texture.blit_buffer(cv2.flip(frame, 0).tobytes(), colorfmt='bgr', bufferfmt='ubyte')
+        self.root.ids.screen_manager.get_screen("add_student").ids.add_student_camera_feed.texture = texture
+        toast("Face captured successfully!")
+
+    def encode_face(self, image_path):
         try:
-            roll_no = int(roll_no)
-        except ValueError:
-            self.show_error_dialog("Roll No must be a number")
+            img = face_recognition.load_image_file(image_path)
+            encodings = face_recognition.face_encodings(img)
+            return encodings if encodings else None
+        except Exception as e:
+            print(f"Error encoding face from {image_path}: {e}")
+            return None
+
+    def save_new_student(self):
+        screen = self.root.ids.screen_manager.get_screen("add_student")
+        roll = screen.ids.add_roll.text.strip()
+        name = screen.ids.add_name.text.strip()
+        course = screen.ids.add_course.text.strip()
+        dob = screen.ids.add_dob.text.strip()
+
+        if not roll or not name or not course or not dob or not hasattr(self, 'face_image'):
+            toast("Please fill all fields and capture or upload a face")
             return
-            
+
+        # Validate DOB format
         try:
             datetime.strptime(dob, '%Y-%m-%d')
         except ValueError:
-            self.show_error_dialog("Invalid date format. Use YYYY-MM-DD")
+            toast("Invalid DOB format. Use YYYY-MM-DD.")
             return
-        
-        # Detect and encode face
-        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        face_locations = face_recognition.face_locations(rgb_image)
-        
-        if not face_locations:
-            self.show_error_dialog("No face detected in the image")
-            return
-            
-        face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
-        if not face_encodings:
-            self.show_error_dialog("Failed to encode the detected face")
-            return
-        
-        # Store in database
-        self.store_face_encoding(roll_no, name, course, dob, face_encodings[0])
 
-    # def show_date_picker(self, *args):
-    #     """Show Date Range Picker"""
-    #     date_dialog = MDDatePicker(
-    #         mode="range",
-    #         min_date=date.today() - timedelta(days=60),
-    #         max_date=date.today()
-    #     )
-    #     date_dialog.bind(on_save=self.on_date_range_selected, on_cancel=lambda *args: None)
-    #     date_dialog.open()
-    def show_date_picker(self, *args):
-        """Show Date Range Picker"""
-        from datetime import date, timedelta
-        from kivymd.uix.pickers import MDDatePicker
-        
-        date_dialog = MDDatePicker(
-            mode="range",
-            min_date=date.today() - timedelta(days=60),
-            max_date=date.today()
-        )
-        date_dialog.bind(on_save=self.on_date_range_selected)
-        date_dialog.open()
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
 
-    def on_date_range_selected(self, instance, value, date_range):
-        """Handle Date Range Selection"""
-        if date_range:
-            self.start_date = date_range[0]
-            self.end_date = date_range[-1]
-            date_label = f"{self.start_date} to {self.end_date}"
-            self.root.ids.screen_manager.get_screen('dashboard').ids.date_range_label.text = date_label
-            self.load_attendance_dashboard()
-
-    def filter_dashboard(self):
-        """Filter Dashboard by Roll No and Date Range"""
         try:
-            main_screen = self.screen_manager.get_screen('main')
-            # Check if we're using the new UI structure with screen_manager or the old one with tabs
-            if hasattr(main_screen.ids, 'screen_manager'):
-                # New structure
-                dashboard_screen = main_screen.ids.screen_manager.get_screen('dashboard')
-                # Update your field references accordingly
-            elif hasattr(main_screen.ids, 'tab2'):
-                # Old structure with tabs
-                # Use the old references
-                pass
-            
-            self.load_attendance_dashboard()
-        except Exception as e:
-            print(f"Error in filter_dashboard: {e}")
-            self.show_error_dialog(f"Error filtering dashboard: {e}")
-
-    # def refresh_dashboard(self, *args):
-    #     """Refresh Dashboard"""
-    #     self.start_date = None
-    #     self.end_date = None
-    #     self.screen_manager.get_screen('main').ids.tab2.ids.roll_no_filter.text = ""
-    #     self.screen_manager.get_screen('main').ids.tab2.ids.date_range_label.text = ""
-    #     self.load_attendance_dashboard()
-    def refresh_dashboard(self, *args):
-        """Refresh Dashboard"""
-        self.start_date = None
-        self.end_date = None
-
-        main_screen = self.screen_manager  # This is already MainScreen
-        try:
-            # Get the inner ScreenManager inside MainScreen
-            screen_manager = main_screen.ids.screen_manager
-
-            # Optional: switch to dashboard if needed
-            screen_manager.current = "dashboard"
-
-            # Get the dashboard screen
-            dashboard_screen = screen_manager.get_screen("dashboard")
-
-            # Clear filter fields
-            dashboard_screen.ids.roll_no_filter.text = ""
-            dashboard_screen.ids.date_range_label.text = ""
-
-            self.load_attendance_dashboard()
-
-        except Exception as e:
-            print(f"❌ Error refreshing dashboard: {e}")
-            self.show_error_dialog(f"Error refreshing dashboard: {e}")
-
-
-    def export_to_csv(self, *args):
-        """Export Attendance Data to CSV"""
-        db = get_db_connection()
-        if not db:
-            return
-        try:
-            cursor = db.cursor()
-            
-            # Build the query with joins to get student names
-            query = """
-                SELECT a.roll_no, s.name, a.date, a.attendance 
-                FROM attendance a
-                JOIN student_info s ON a.roll_no = s.roll_no
-            """
-            
-            params = []
-            where_clauses = []
-            
-            if self.start_date and self.end_date:
-                where_clauses.append("a.date BETWEEN %s AND %s")
-                params.extend([self.start_date, self.end_date])
-                
-            # roll_no_filter = self.screen_manager.get_screen('main').ids.tab2.ids.roll_no_filter.text.strip()
-            roll_no_filter = self.screen_manager.ids.roll_no_filter.text.strip()
-
-            if roll_no_filter:
-                try:
-                    roll_no_int = int(roll_no_filter)
-                    where_clauses.append("a.roll_no = %s")
-                    params.append(roll_no_int)
-                except ValueError:
-                    print("Invalid roll number format")
-            
-            # Add WHERE clause if any conditions exist
-            if where_clauses:
-                query += " WHERE " + " AND ".join(where_clauses)
-
-            cursor.execute(query, params)
-            data = cursor.fetchall()
-            
-            # Convert 'P'/'A' to 'Present'/'Absent' for better readability
-            formatted_data = []
-            for row in data:
-                roll_no, name, date, status = row
-                status_text = "Present" if status == 'P' else "Absent" if status == 'A' else status
-                formatted_data.append((roll_no, name, date, status_text))
-            
-            df = pd.DataFrame(formatted_data, columns=["Roll No", "Name", "Date", "Status"])
-            
-            # Create output directory if it doesn't exist
-            output_dir = os.path.expanduser("~/Desktop")
-            os.makedirs(output_dir, exist_ok=True)
-            
-            output_path = os.path.join(output_dir, f"attendance_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-            df.to_csv(output_path, index=False)
-            print(f"Data exported to {output_path} successfully!")
-            toast("📁 Data exported to Desktop!")
-        except mysql.connector.Error as err:
-            print(f"Error exporting CSV: {err}")
-        finally:
-            cursor.close()
-            db.close()
-
-    # def load_attendance_dashboard(self):
-    #     """Load ERP Dashboard with Visualizations and Data Table"""
-        
-    #     # Find the graphs_layout safely
-    #     try:
-    #         screen_manager = self.root.ids.screen_manager
-    #         dashboard_screen = screen_manager.get_screen('dashboard')
-    #         graphs_layout = dashboard_screen.ids.graphs_layout
-    #         graphs_layout.clear_widgets()
-    #     except AttributeError as e:
-    #         print(f"Error accessing UI elements: {e}")
-    #         self.show_error_dialog("Error loading dashboard: UI elements not found")
-    #         return
-        
-    #     db = get_db_connection()
-    #     if not db:
-    #         return
-    #     try:
-    #         cursor = db.cursor()
-            
-    #         # Get filter values - safely access these widgets
-    #         roll_no_filter = ""
-    #         try:
-    #             # Try to get the filter field from the new UI structure
-    #             roll_no_field = dashboard_screen.ids.roll_no_filter
-    #             roll_no_filter = roll_no_field.text.strip()
-    #         except AttributeError:
-    #             print("Warning: Could not find roll_no_filter in dashboard screen")
-            
-    #         roll_no_int = None
-    #         if roll_no_filter:
-    #             try:
-    #                 roll_no_int = int(roll_no_filter)
-    #             except ValueError:
-    #                 print("Invalid roll number format")
-            
-    #         # Update Summary Cards with animations
-    #         try:
-    #             cursor.execute("SELECT COUNT(*) FROM student_info")
-    #             total_students = cursor.fetchone()[0]
-    #             total_students_widget = dashboard_screen.ids.total_students
-    #             self._animate_counter(total_students_widget, 0, total_students)
-    #         except AttributeError:
-    #             print("Warning: Could not find total_students widget")
-            
-    #         # Count total attendance records based on filters
-    #         attendance_query = "SELECT COUNT(*) FROM attendance a"
-    #         attendance_params = []
-    #         where_clauses = []
-            
-    #         if self.start_date and self.end_date:
-    #             where_clauses.append("a.date BETWEEN %s AND %s")
-    #             attendance_params.extend([self.start_date, self.end_date])
-                    
-    #         if roll_no_int is not None:
-    #             where_clauses.append("a.roll_no = %s")
-    #             attendance_params.append(roll_no_int)
-            
-    #         if where_clauses:
-    #             attendance_query += " WHERE " + " AND ".join(where_clauses)
-                    
-    #         cursor.execute(attendance_query, attendance_params)
-    #         total_records = cursor.fetchone()[0]
-            
-    #         try:
-    #             total_records_widget = dashboard_screen.ids.total_records
-    #             self._animate_counter(total_records_widget, 0, total_records)
-    #         except AttributeError:
-    #             print("Warning: Could not find total_records widget")
-
-    #         # Count 'Present' attendance records based on filters
-    #         present_query = "SELECT COUNT(*) FROM attendance a WHERE attendance = 'P'"
-    #         present_params = []
-            
-    #         if where_clauses:
-    #             present_query += " AND " + " AND ".join(where_clauses)
-    #             present_params = attendance_params.copy()
-            
-    #         cursor.execute(present_query, present_params)
-    #         present_count = cursor.fetchone()[0]
-            
-    #         # Calculate attendance rate with animation
-    #         attendance_rate = (present_count / total_records * 100) if total_records > 0 else 0
-    #         try:
-    #             attendance_rate_widget = dashboard_screen.ids.attendance_rate
-    #             self._animate_counter(attendance_rate_widget, 0, attendance_rate, suffix="%", decimal_places=1)
-    #         except AttributeError:
-    #             print("Warning: Could not find attendance_rate widget")
-
-    #         # Add top students card (new feature)
-    #         self._add_top_students_card(cursor, graphs_layout)
-            
-    #         # Check if we're viewing by specific roll number or full dashboard
-    #         if roll_no_int is not None:
-    #             # Individual student view - show detailed student graphs
-    #             self._show_individual_student_dashboard(cursor, roll_no_int, graphs_layout)
-    #         else:
-    #             # Overview dashboard - show aggregate data
-    #             self._show_aggregate_dashboard(cursor, where_clauses, attendance_params, graphs_layout)
-
-    #         # Add Data Table at the bottom with search functionality
-    #         self._add_attendance_data_table(cursor, where_clauses, attendance_params, graphs_layout)
-                
-    #     except mysql.connector.Error as err:
-    #         print(f"Error loading dashboard: {err}")
-    #         self.show_error_dialog(f"Error loading dashboard: {err}")
-    #     finally:
-    #         cursor.close()
-    #         db.close()
-
-    def load_attendance_dashboard(self):
-        try:
-            # Access the nested screen manager inside the root MainScreen
-            # Assuming self.root is your MainScreen
-            screen_manager = self.root.ids.screen_manager
-            screen_manager.current = "dashboard"
-            
-            # Schedule loading after screen transition
-            Clock.schedule_once(self._safe_load_dashboard, 0.5)
-            
-            # Get dashboard screen
-            dashboard_screen = screen_manager.get_screen('dashboard')
-            print("Available screens:", screen_manager.screen_names)
-
-            # Get UI elements
-            total_students = dashboard_screen.ids.get("total_students")
-            total_records = dashboard_screen.ids.get("total_records")
-            attendance_rate = dashboard_screen.ids.get("attendance_rate")
-            chart_box = dashboard_screen.ids.get("graphs_layout")
-
-            print("✅ dashboard_screen.ids keys:", list(dashboard_screen.ids.keys()))
-
-            if not all([total_students, total_records, attendance_rate, chart_box]):
-                raise Exception("UI elements not found")
-
-            # Example mock data
-            students_count = len(self.fetch_students())
-            records_count = len(self.fetch_attendance_data())
-            rate = (records_count / students_count) * 100 if students_count > 0 else 0
-
-            total_students.text = str(students_count)
-            total_records.text = str(records_count)
-            attendance_rate.text = f"{rate:.2f}%"
-
-            # Clear and add new chart placeholder
-            chart_box.clear_widgets()
-            chart_box.add_widget(MDLabel(text="(chart placeholder)", halign="center"))
-
-        except Exception as e:
-            print(f"Error switching to dashboard: {e}")
-            self.show_error_dialog(f"Error switching to dashboard: {e}")
-
-    def _safe_load_dashboard(self, dt):
-        try:
-            # Get dashboard screen
-            dashboard_screen = self.root.ids.screen_manager.get_screen('dashboard')
-            
-            # Debug: print all available IDs
-            print("Dashboard screen IDs:", dashboard_screen.ids.keys())
-            
-            # Access UI elements
-            total_students = dashboard_screen.ids.total_students
-            total_records = dashboard_screen.ids.total_records
-            attendance_rate = dashboard_screen.ids.attendance_rate
-            charts_layout = dashboard_screen.ids.graphs_layout
-            
-            # Example mock data
-            students_count = len(self.fetch_students())
-            records_count = len(self.fetch_attendance_data())
-            rate = (records_count / students_count) * 100 if students_count > 0 else 0
-            
-            # Update UI elements
-            total_students.text = str(students_count)
-            total_records.text = str(records_count)
-            attendance_rate.text = f"{rate:.2f}%"
-            
-            # Clear and add new chart placeholder
-            charts_layout.clear_widgets()
-            charts_layout.add_widget(MDLabel(text="(chart placeholder)", halign="center"))
-            
-        except AttributeError as e:
-            print(f"ID not found error: {e}")
-            # More specific error message that tells you exactly which ID is missing
-            self.show_error_dialog(f"Dashboard UI element not found: {e}")
-        except Exception as e:
-            print(f"Error loading dashboard data: {e}")
-            self.show_error_dialog(f"Error loading dashboard data: {e}")
-
-    def _animate_counter(self, widget, start_val, end_val, duration=1.0, suffix="", decimal_places=0):
-        """Animate counter from start_val to end_val"""
-        if widget is None:
-            print("Warning: Widget is None in _animate_counter")
-            return
-            
-        try:
-            start_val = float(start_val) if isinstance(start_val, str) and start_val.replace('.', '', 1).isdigit() else float(start_val)
-            
-            # Define the animation step function
-            def update_value(dt):
-                nonlocal step_count
-                step_count += 1
-                progress = min(step_count / total_steps, 1.0)
-                eased_progress = 1 - (1 - progress) * (1 - progress)
-                current = start_val + (end_val - start_val) * eased_progress
-                
-                if decimal_places > 0:
-                    formatted = f"{current:.{decimal_places}f}{suffix}"
-                else:
-                    formatted = f"{int(current)}{suffix}"
-                    
-                widget.text = formatted
-                widget.text_color = (0.2, 0.7, 0.3, 1) if suffix == "%" else (0, 0, 0, 1)
-                if step_count >= total_steps:
-                    return False
-                    
-            # Animation parameters    
-            fps = 30
-            total_steps = int(fps * duration)
-            step_count = 0
-            
-            # Schedule the animation
-            Clock.schedule_interval(update_value, 1.0/fps)
-        except Exception as e:
-            print(f"Error in _animate_counter: {e}")
-
-    def _add_top_students_card(self, cursor, layout):
-        """Add top students with highest attendance card"""
-        try:
-            # Create card for top students
-            top_card = MDCard(
-                orientation="vertical",
-                padding="10dp",
-                size_hint_y=None,
-                height=dp(200),
-                elevation=4,
-                radius=[10, 10, 10, 10]
-            )
-            
-            # Add title to card
-            top_card.add_widget(MDLabel(
-                text="Top Students by Attendance",
-                font_style="H6",
-                halign="center",
-                size_hint_y=None,
-                height=dp(30)
-            ))
-            
-            # Query to get top 5 students with highest attendance percentage
-            query = """
-            SELECT s.roll_no, s.name, 
-                SUM(CASE WHEN a.attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-                COUNT(*) as total_count,
-                (SUM(CASE WHEN a.attendance = 'P' THEN 1 ELSE 0 END) / COUNT(*)) * 100 as attendance_rate
-            FROM student_info s
-            JOIN attendance a ON s.roll_no = a.roll_no
-            GROUP BY s.roll_no, s.name
-            ORDER BY attendance_rate DESC
-            LIMIT 5
-            """
-            
-            cursor.execute(query)
-            top_students = cursor.fetchall()
-            
-            if not top_students:
-                top_card.add_widget(MDLabel(
-                    text="No attendance data available",
-                    halign="center"
-                ))
-                layout.add_widget(top_card)
+            cursor.execute("SELECT * FROM student_info WHERE roll_no = %s", (roll,))
+            if cursor.fetchone():
+                toast("Student with this roll number already exists.")
+                conn.close()
                 return
-                
-            # Create horizontal layout for leaderboard
-            leaderboard = MDBoxLayout(
-                orientation="horizontal",
-                size_hint_y=None,
-                height=dp(150),
-                padding="10dp",
-                spacing="10dp"
-            )
-            
-            # Add students to leaderboard
-            for i, (roll_no, name, present, total, rate) in enumerate(top_students):
-                position = i + 1
-                student_card = MDCard(
-                    orientation="vertical",
-                    size_hint_x=0.2,
-                    padding="8dp",
-                    elevation=2,
-                    radius=[8, 8, 8, 8],
-                    md_bg_color=(1, 0.97, 0.8, 1)  if i == 0 else (1, 1, 1, 1)
-                )
-                
-                # Position badge
-                # badge_color = [(0.9, 0.7, 0.1, 1), (0.8, 0.8, 0.8, 1), (0.8, 0.5, 0.2, 1), 
-                #             (0.7, 0.7, 0.7, 1), (0.7, 0.7, 0.7, 1)][min(i, 4)]
-                badge_colors = [
-                    (0.9, 0.7, 0.1, 1),  # Gold - 1st
-                    (0.8, 0.8, 0.8, 1),  # Silver - 2nd
-                    (0.8, 0.5, 0.2, 1),  # Bronze - 3rd
-                    (0.45, 0.62, 0.8, 1),  # Blue - 4th
-                    (0.6, 0.4, 0.7, 1),  # Purple - 5th
-                ]
 
-                badge_color = badge_colors[i] if i < len(badge_colors) else (0.7, 0.7, 0.7, 1)
+            # Ensure 'faces' directory exists
+            os.makedirs("faces", exist_ok=True)
 
-                
-                badge = MDBoxLayout(
-                    size_hint=(None, None),
-                    size=(dp(30), dp(30)),
-                    md_bg_color=badge_color,
-                    radius=[15, 15, 15, 15],
-                    pos_hint={"center_x": 0.5}
-                )
-                
-                badge.add_widget(MDLabel(
-                    text=str(position),
-                    halign="center",
-                    theme_text_color="Custom",
-                    text_color=(1, 1, 1, 1),
-                    font_style="H6"
-                ))
-                
-                student_card.add_widget(badge)
-                
-                # Add student name (shortened if too long)
-                short_name = name if len(name) < 12 else name[:10] + "..."
-                student_card.add_widget(MDLabel(
-                    text=short_name,
-                    halign="center",
-                    size_hint_y=None,
-                    height=dp(30),
-                    font_style="Subtitle1"
-                ))
-                
-                # Add attendance percentage
-                student_card.add_widget(MDLabel(
-                    text=f"{rate:.1f}%",
-                    halign="center",
-                    theme_text_color="Custom",
-                    text_color=(0.2, 0.6, 0.2, 1),
-                    font_style="H6"
-                ))
-                
-                # Add roll number
-                student_card.add_widget(MDLabel(
-                    text=f"Roll: {roll_no}",
-                    halign="center",
-                    theme_text_color="Secondary",
-                    font_style="Caption"
-                ))
-                
-                leaderboard.add_widget(student_card)
-                
-            top_card.add_widget(leaderboard)
-            layout.add_widget(top_card)
-            
-        except mysql.connector.Error as err:
-            print(f"Error creating top students card: {err}")
+            # Save face image
+            image_path = f"faces/{roll}.jpg"
+            cv2.imwrite(image_path, self.face_image)
 
-    def _show_individual_student_dashboard(self, cursor, roll_no, graphs_layout):
-        """Show detailed dashboard for a single student with enhanced visualizations"""
-        # Get student info
-        cursor.execute("SELECT name FROM student_info WHERE roll_no = %s", (roll_no,))
-        result = cursor.fetchone()
-        if not result:
-            graphs_layout.add_widget(MDLabel(
-                text=f"No student found with roll number {roll_no}",
-                halign="center",
-                size_hint_y=None,
-                height=dp(50)
-            ))
+            # Encode face
+            face_encodings = self.encode_face(image_path)
+            if face_encodings is None:
+                toast("No face detected in saved image.")
+                os.remove(image_path)
+                conn.close()
+                return
+
+            # Use .tobytes() for consistency with StoreFaceDialog
+            face_data = face_encodings[0].tobytes()
+
+            cursor.execute("""
+                INSERT INTO student_info (roll_no, name, course, dob, face_id)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (roll, name, course, dob, face_data))
+
+            conn.commit()
+            toast("Student added successfully!")
+
+            # Clear input fields and reset face_image
+            screen.ids.add_roll.text = ""
+            screen.ids.add_name.text = ""
+            screen.ids.add_course.text = ""
+            screen.ids.add_dob.text = ""
+            delattr(self, 'face_image')
+            self.root.ids.screen_manager.get_screen("add_student").ids.add_student_camera_feed.texture = None
+
+        except mysql.connector.Error as e:
+            toast(f"Database error: {e}")
+            if os.path.exists(image_path):
+                os.remove(image_path)
+        finally:
+            conn.close()
+    def check_roll_availability(self, roll_no):
+        roll_no = roll_no.strip()
+        if not roll_no:
             return
-        
-        student_name = result[0]
-        
-        student_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(80),
-            padding="10dp",
-            elevation=3,
-            radius=[10, 10, 10, 10]
+
+        conn = mysql.connector.connect(host="localhost", user="root", password="0000", database="COGNITOAI")
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM student_info WHERE roll_no = %s", (roll_no,))
+        exists = cursor.fetchone()
+        conn.close()
+
+        if exists:
+            toast("This roll number already exists! Please choose another.")
+            # Optionally, clear the field:
+            self.root.ids.screen_manager.get_screen("add_student").ids.add_roll.text = ""
+
+    def show_about(self):
+        about_dialog = MDDialog(
+            title="About CognitoAI",
+            text=(
+                "CognitoAI is a Facial Recognition-based Attendance System.\n\n"
+                "Developed using Python, KivyMD, OpenCV, and MySQL.\n\n"
+                "Version: 1.0\nAuthor: Prasoon Tripathi and Akshay Maurya\nContact: admin@cognitoai.com"
+            ),
+            buttons=[MDFlatButton(text="Close", on_release=lambda x: about_dialog.dismiss())]
         )
-
-        student_card.add_widget(MDLabel(
-            text=f"{student_name}",
-            font_style="H5",
-            halign="center",
-            size_hint_y=None,
-            height=dp(40),
-            theme_text_color="Custom",
-            text_color=self.theme_cls.primary_color
-        ))
-
-        student_card.add_widget(MDLabel(
-            text=f"Roll No: {roll_no}",
-            halign="center",
-            size_hint_y=None,
-            height=dp(30),
-            theme_text_color="Secondary",
-            font_style="Subtitle1"
-        ))
-
-        graphs_layout.add_widget(student_card)
-
-        
-        # Get attendance data for this student
-        attendance_query = "SELECT date, attendance FROM attendance WHERE roll_no = %s"
-        params = [roll_no]
-        
-        if self.start_date and self.end_date:
-            attendance_query += " AND date BETWEEN %s AND %s"
-            params.extend([self.start_date, self.end_date])
-            
-        cursor.execute(attendance_query, params)
-        attendance_data = cursor.fetchall()
-        
-        if not attendance_data:
-            graphs_layout.add_widget(MDLabel(
-                text=f"No attendance data for {student_name} (Roll No: {roll_no})",
-                halign="center",
-                size_hint_y=None,
-                height=dp(50)
-            ))
-            return
-        
-        dates = [row[0].strftime("%Y-%m-%d") for row in attendance_data]
-        statuses = [row[1] for row in attendance_data]
-        
-        # Create a dashboard stats card
-        stats_card = MDCard(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(120),
-            padding="15dp",
-            spacing="15dp",
-            elevation=3,
-            radius=[10, 10, 10, 10]
-        )
-        
-        # Calculate statistics
-        present_count = statuses.count("P")
-        absent_count = statuses.count("A")
-        total_days = len(statuses)
-        attendance_percentage = (present_count / total_days) * 100 if total_days > 0 else 0
-        
-        # Create three stat boxes
-        stat_colors = [(0.2, 0.7, 0.3, 1), (0.9, 0.3, 0.3, 1), (0.2, 0.6, 0.9, 1)]
-        stat_icons = ["check-circle", "close-circle", "percent"]
-        stat_values = [present_count, absent_count, f"{attendance_percentage:.1f}%"]
-        stat_labels = ["Present", "Absent", "Attendance"]
-        
-        for icon, value, label, color in zip(stat_icons, stat_values, stat_labels, stat_colors):
-            stat_box = MDBoxLayout(
-                orientation="vertical",
-                size_hint_x=0.33,
-                padding="5dp"
-            )
-            
-            # Icon
-            icon_box = MDBoxLayout(
-                size_hint=(None, None),
-                size=(dp(30), dp(30)),
-                pos_hint={"center_x": 0.5}
-            )
-            icon_box.add_widget(MDIconButton(
-                icon=icon,
-                theme_text_color="Custom",
-                text_color=color,
-                icon_size=dp(30),
-                pos_hint={"center_x": 0.5, "center_y": 0.5}
-            ))
-            stat_box.add_widget(icon_box)
-            
-            # Value
-            stat_box.add_widget(MDLabel(
-                text=str(value),
-                halign="center",
-                theme_text_color="Custom",
-                text_color=color,
-                font_style="H5"
-            ))
-            
-            # Label
-            stat_box.add_widget(MDLabel(
-                text=label,
-                halign="center",
-                theme_text_color="Secondary",
-                font_style="Caption"
-            ))
-            
-            stats_card.add_widget(stat_box)
-        
-        graphs_layout.add_widget(stats_card)
-        
-        # Create a horizontal layout for placing graphs side by side
-        graphs_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(300),
-            padding="10dp",
-            spacing="10dp"
-        )
-        
-        # Bar Chart: Present vs Absent (left side) with improved styling
-        status_display = ["Present" if s == "P" else "Absent" if s == "A" else s for s in statuses]
-        df_bar = pd.DataFrame({"Status": status_display})
-        
-        plt.figure(figsize=(5, 4), facecolor='#f0f0f0')
-        ax = sns.countplot(data=df_bar, x="Status", palette={"Present": "#4CAF50", "Absent": "#F44336"})
-        plt.title("Attendance Summary", fontsize=14, pad=20)
-        plt.ylabel("Count", fontsize=12)
-        plt.grid(axis='y', linestyle='--', alpha=0.7)
-        
-        # Add count labels on top of bars
-        for p in ax.patches:
-            ax.annotate(f'{int(p.get_height())}', 
-                    (p.get_x() + p.get_width()/2., p.get_height() + 0.3), 
-                    ha='center', va='bottom', fontsize=12, fontweight='bold')
-        
-        plt.tight_layout()
-        
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-        buffer.seek(0)
-        bar_texture = CoreImage(buffer, ext='png').texture
-        plt.close()
-        
-        bar_chart = Image(
-            texture=bar_texture,
-            size_hint=(0.5, 1),
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        
-        # Add chart to a card
-        bar_card = MDCard(
-            size_hint=(0.5, 1),
-            elevation=2,
-            radius=[10, 10, 10, 10],
-            padding="5dp"
-        )
-        bar_card.add_widget(bar_chart)
-        graphs_row.add_widget(bar_card)
-        
-        # Pie Chart: Proportion of Attendance (right side)
-        plt.figure(figsize=(5, 4), facecolor='#f0f0f0')
-        plt.pie([present_count, absent_count], 
-            labels=["Present", "Absent"], 
-            colors=['#4CAF50', '#F44336'], 
-            autopct='%1.1f%%',
-            textprops={'fontsize': 12, 'fontweight': 'bold'},
-            explode=[0.05, 0],
-            shadow=True)
-        plt.title("Attendance Proportion", fontsize=14, pad=20)
-        
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-        buffer.seek(0)
-        pie_texture = CoreImage(buffer, ext='png').texture
-        plt.close()
-        
-        pie_chart = Image(
-            texture=pie_texture,
-            size_hint=(0.5, 1),
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        
-        # Add chart to a card
-        pie_card = MDCard(
-            size_hint=(0.5, 1),
-            elevation=2,
-            radius=[10, 10, 10, 10],
-            padding="5dp"
-        )
-        pie_card.add_widget(pie_chart)
-        graphs_row.add_widget(pie_card)
-        
-        # Add the row to the main layout
-        graphs_layout.add_widget(graphs_row)
-        
-        # Create another row for the weekday analysis chart and trends
-        graphs_row2 = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(300),
-            padding="10dp",
-            spacing="10dp"
-        )
-        
-        # Add a weekday analysis chart with improved styling
-        date_objects = [datetime.strptime(d, "%Y-%m-%d") for d in dates]
-        weekdays = [d.strftime("%A") for d in date_objects]  # Get day names
-        
-        # Create a DataFrame with day and status
-        df_weekday = pd.DataFrame({
-            "Weekday": weekdays,
-            "Status": statuses
-        })
-        
-        # Count present/absent by weekday
-        weekday_counts = df_weekday.groupby(['Weekday', 'Status']).size().unstack(fill_value=0)
-        
-        # Ensure all weekdays are in order
-        weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        weekday_counts = weekday_counts.reindex(weekday_order, fill_value=0)
-        
-        # Plot weekday analysis with improved styling
-        plt.figure(figsize=(8, 4), facecolor='#f0f0f0')
-        ax = weekday_counts.plot(kind='bar', color=['#F44336', '#4CAF50'], edgecolor='black', linewidth=0.5)
-        plt.title("Attendance by Day of Week", fontsize=14, pad=15)
-        plt.ylabel("Count", fontsize=12)
-        plt.xlabel("Weekday", fontsize=12)
-        plt.legend(["Absent", "Present"], frameon=True, fancybox=True, shadow=True)
-        plt.grid(axis='y', linestyle='--', alpha=0.7)
-        plt.tight_layout()
-        
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-        buffer.seek(0)
-        weekday_texture = CoreImage(buffer, ext='png').texture
-        plt.close()
-        
-        # Add chart to a card
-        weekday_card = MDCard(
-            size_hint=(1, 1),
-            elevation=2,
-            radius=[10, 10, 10, 10],
-            padding="5dp"
-        )
-        
-        weekday_chart = Image(
-            texture=weekday_texture,
-            size_hint=(1, 1),
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        weekday_card.add_widget(weekday_chart)
-        graphs_row2.add_widget(weekday_card)
-        
-        # Add the second row to the main layout
-        graphs_layout.add_widget(graphs_row2)
-        
-        # Add attendance timeline (streak analysis) - New feature
-        self._add_attendance_timeline(roll_no, dates, statuses, graphs_layout)
-
-    def _add_attendance_timeline(self, roll_no, dates, statuses, layout):
-        """Add attendance timeline visualization to show streaks and patterns"""
-        if not dates or not statuses:
-            return
-            
-        # Create a DataFrame with dates and statuses
-        df = pd.DataFrame({
-            'date': [datetime.strptime(d, "%Y-%m-%d") for d in dates],
-            'status': statuses
-        })
-        
-        # Sort by date
-        df = df.sort_values('date')
-        
-        # Fill in missing dates with 'Missing'
-        date_range = pd.date_range(start=df['date'].min(), end=df['date'].max())
-        all_dates = pd.DataFrame({'date': date_range})
-        df = pd.merge(all_dates, df, on='date', how='left')
-        df['status'].fillna('Missing', inplace=True)
-        
-        # Create status map
-        status_map = {'P': 1, 'A': -1, 'Missing': 0}
-        df['value'] = df['status'].map(status_map)
-        
-        # Create figure
-        plt.figure(figsize=(10, 2.5), facecolor='#f0f0f0')
-        
-        # Create a colormap
-        cmap = plt.cm.RdYlGn  # Red for absent, yellow for missing, green for present
-        norm = plt.Normalize(-1, 1)
-        
-        # Plot each day as a colored cell
-        for i, (_, row) in enumerate(df.iterrows()):
-            color = cmap(norm(row['value']))
-            plt.fill_between([i, i+0.9], 0, 1, color=color, edgecolor='white', linewidth=0.5)
-        
-        # Add month dividers and labels
-        month_starts = {}
-        for i, date in enumerate(df['date']):
-            month_start = date.replace(day=1)
-            if month_start not in month_starts:
-                month_starts[month_start] = i
-                plt.axvline(x=i, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
-                plt.text(i+2, -0.15, date.strftime('%b %Y'), 
-                        fontsize=9, ha='left', va='center', rotation=0)
-        
-        # Create custom legend
-        import matplotlib.patches as mpatches
-        present_patch = mpatches.Patch(color=cmap(norm(1)), label='Present')
-        absent_patch = mpatches.Patch(color=cmap(norm(-1)), label='Absent')
-        missing_patch = mpatches.Patch(color=cmap(norm(0)), label='No Record')
-        plt.legend(handles=[present_patch, absent_patch, missing_patch], 
-                loc='upper center', bbox_to_anchor=(0.5, -0.15),
-                ncol=3, frameon=True, fancybox=True)
-        
-        # Set plot appearance
-        plt.title('Attendance Timeline', fontsize=14, pad=10)
-        plt.ylim(-0.1, 1.1)
-        plt.xlim(-0.5, len(df) + 0.5)
-        plt.axis('off')
-        plt.tight_layout()
-        
-        # Save the figure
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-        buffer.seek(0)
-        timeline_texture = CoreImage(buffer, ext='png').texture
-        plt.close()
-        
-        # Create a card for the timeline
-        timeline_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(200),
-            elevation=3,
-            radius=[10, 10, 10, 10],
-            padding="10dp"
-        )
-        
-        timeline_card.add_widget(MDLabel(
-            text="Attendance Timeline",
-            halign="center",
-            size_hint_y=None,
-            height=dp(30),
-            font_style="H6"
-        ))
-        
-        timeline_chart = Image(
-            texture=timeline_texture,
-            size_hint_y=None,
-            height=dp(150),
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        
-        timeline_card.add_widget(timeline_chart)
-        layout.add_widget(timeline_card)
-        
-        # Calculate and display streaks
-        self._calculate_streaks(df, layout)
-
-    def _calculate_streaks(self, df, layout):
-        """Calculate and display attendance streaks"""
-        # Find current and longest present streaks
-        current_streak = 0
-        longest_streak = 0
-        current_streak_type = None
-        longest_absent = 0
-        current_absent = 0
-        
-        for status in df['status']:
-            if status == 'P':
-                if current_streak_type == 'P' or current_streak_type is None:
-                    current_streak += 1
-                    current_streak_type = 'P'
-                else:
-                    current_streak = 1
-                    current_streak_type = 'P'
-                longest_streak = max(longest_streak, current_streak)
-                current_absent = 0
-            elif status == 'A':
-                if current_streak_type == 'A' or current_streak_type is None:
-                    current_absent += 1
-                    current_streak_type = 'A'
-                else:
-                    current_absent = 1
-                    current_streak_type = 'A'
-                longest_absent = max(longest_absent, current_absent)
-                current_streak = 0
-            else:  # Missing
-                current_streak = 0
-                current_absent = 0
-                current_streak_type = None
-        
-        # Display streak information
-        streak_card = MDCard(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(100),
-            elevation=2,
-            radius=[10, 10, 10, 10],
-            padding="10dp",
-            spacing="10dp"
-        )
-        
-        # Longest present streak
-        present_streak = MDBoxLayout(
-            orientation="vertical",
-            size_hint_x=0.5,
-            padding="5dp"
-        )
-        
-        present_streak.add_widget(MDLabel(
-            text="Longest Present Streak",
-            halign="center",
-            theme_text_color="Secondary",
-            font_style="Body1"
-        ))
-        
-        present_streak.add_widget(MDLabel(
-            text=f"{longest_streak} days",
-            halign="center",
-            theme_text_color="Custom",
-            text_color=(0.2, 0.7, 0.3, 1),
-            font_style="H5"
-        ))
-        
-        streak_card.add_widget(present_streak)
-        
-        # Longest absent streak
-        absent_streak = MDBoxLayout(
-            orientation="vertical",
-            size_hint_x=0.5,
-            padding="5dp"
-        )
-        
-        absent_streak.add_widget(MDLabel(
-            text="Longest Absent Streak",
-            halign="center",
-            theme_text_color="Secondary",
-            font_style="Body1"
-        ))
-        
-        absent_streak.add_widget(MDLabel(
-            text=f"{longest_absent} days",
-            halign="center",
-            theme_text_color="Custom",
-            text_color=(0.9, 0.3, 0.3, 1),
-            font_style="H5"
-        ))
-        
-        streak_card.add_widget(absent_streak)
-        layout.add_widget(streak_card)
-
-    def _show_aggregate_dashboard(self, cursor, where_clauses, params, graphs_layout):
-        """Show aggregate dashboard for all students"""
-        self._add_class_summary_card(cursor, where_clauses, params, graphs_layout)
-        # Create a horizontal layout for placing graphs side by side
-        graphs_row = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(300),
-            padding="10dp",
-            spacing="10dp"
-        )
-        
-        # Add overview title
-        # graphs_layout.add_widget(MDLabel(
-        #     text="Attendance Overview",
-        #     font_style="H5",
-        #     halign="center",
-        #     size_hint_y=None,
-        #     height=dp(40)
-        # ))
-        
-        # Get aggregate data from attendance table
-        aggregate_query = "SELECT attendance, COUNT(*) FROM attendance a"
-        aggregate_params = []
-        
-        if where_clauses:
-            aggregate_query += " WHERE " + " AND ".join(where_clauses)
-            aggregate_params = params.copy()
-        
-        aggregate_query += " GROUP BY attendance"
-        cursor.execute(aggregate_query, aggregate_params)
-        attendance_counts = cursor.fetchall()
-        
-        # Process the results
-        status_dict = {status: count for status, count in attendance_counts}
-        present_count = status_dict.get('P', 0)
-        absent_count = status_dict.get('A', 0)
-        
-        # Pie Chart: Overall Attendance Distribution
-        plt.figure(figsize=(5, 4))
-        plt.pie([present_count, absent_count], 
-            labels=["Present", "Absent"], 
-            colors=['green', 'red'], 
-            autopct='%1.1f%%')
-        plt.title("Overall Attendance Distribution")
-        
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', bbox_inches='tight')
-        buffer.seek(0)
-        pie_texture = CoreImage(buffer, ext='png').texture
-        plt.close()
-        
-        pie_chart = Image(
-            texture=pie_texture,
-            size_hint=(0.5, 1),
-            allow_stretch=True,
-            keep_ratio=True
-        )
-        overview_card = MDCard(
-            orientation="vertical",
-            size_hint=(0.5, 1),
-            padding="10dp",
-            elevation=3,
-            radius=[10, 10, 10, 10]
-        )
-        overview_card.add_widget(MDLabel(
-            text="Attendance Overview",
-            halign="center",
-            size_hint_y=None,
-            height=dp(30),
-            font_style="H6"
-        ))
-        overview_card.add_widget(pie_chart)
-        graphs_row.add_widget(overview_card)
-        
-        # Daily Attendance Trend (Bar chart for each date)
-        # daily_query = """
-        #     SELECT date, 
-        #         SUM(CASE WHEN attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-        #         COUNT(*) as total_count
-        #     FROM attendance a
-        # """
-        # daily_params = []
-        
-        # if where_clauses:
-        #     daily_query += " WHERE " + " AND ".join(where_clauses)
-        #     daily_params = params.copy()
-        
-        # daily_query += " GROUP BY date ORDER BY date"
-        # cursor.execute(daily_query, daily_params)
-        # daily_data = cursor.fetchall()
-        
-        # if daily_data:
-        #     dates = [row[0].strftime("%Y-%m-%d") for row in daily_data]
-        #     present_counts = [row[1] for row in daily_data]
-        #     total_counts = [row[2] for row in daily_data]
-        #     attendance_rates = [present/total*100 if total > 0 else 0 for present, total in zip(present_counts, total_counts)]
-            
-        #     plt.figure(figsize=(6, 4))
-        #     plt.bar(dates, attendance_rates, color='blue')
-        #     plt.title("Daily Attendance Rate")
-        #     plt.ylabel("Attendance Rate (%)")
-        #     plt.xticks(rotation=45)
-        #     plt.ylim(0, 105)  # Set y-axis limit to 0-100% with a little margin
-        #     plt.tight_layout()
-            
-        #     buffer = BytesIO()
-        #     plt.savefig(buffer, format='png', bbox_inches='tight')
-        #     buffer.seek(0)
-        #     daily_texture = CoreImage(buffer, ext='png').texture
-        #     plt.close()
-            
-        #     daily_chart = Image(
-        #         texture=daily_texture,
-        #         size_hint=(0.5, 1),
-        #         allow_stretch=True,
-        #         keep_ratio=True
-        #     )
-        #     graphs_row.add_widget(daily_chart)
-        # Attendance Heatmap
-        heatmap_query = """
-            SELECT date, 
-                SUM(CASE WHEN attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-                COUNT(*) as total_count
-            FROM attendance a
-        """
-        heatmap_params = []
-        if where_clauses:
-            heatmap_query += " WHERE " + " AND ".join(where_clauses)
-            heatmap_params = params.copy()
-        heatmap_query += " GROUP BY date ORDER BY date"
-
-        cursor.execute(heatmap_query, heatmap_params)
-        heatmap_data = cursor.fetchall()
-
-        if heatmap_data:
-            df = pd.DataFrame(heatmap_data, columns=["date", "present", "total"])
-            df['date'] = pd.to_datetime(df['date'])
-            df['rate'] = df['present'] / df['total'] * 100
-            df['day'] = df['date'].dt.day
-            df['month'] = df['date'].dt.month_name()
-
-            pivot_table = df.pivot_table(index='month', columns='day', values='rate')
-            pivot_table = pivot_table.fillna(0)  # Replace NaN with zeros
-            pivot_table = pivot_table.astype(float)
-
-            # Plot heatmap
-            plt.figure(figsize=(6, 4))
-            sns.heatmap(pivot_table, annot=False, cmap="YlGnBu", linewidths=0.5, cbar_kws={'label': 'Attendance Rate (%)'})
-            plt.title("Attendance Heatmap")
-            plt.xlabel("Day of Month")
-            plt.ylabel("Month")
-            plt.tight_layout()
-
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', bbox_inches='tight')
-            buffer.seek(0)
-            heatmap_texture = CoreImage(buffer, ext='png').texture
-            plt.close()
-
-            heatmap_chart = Image(
-                texture=heatmap_texture,
-                size_hint=(0.5, 1),
-                allow_stretch=True,
-                keep_ratio=True
-            )
-            # Wrap heatmap in a card
-            heatmap_card = MDCard(
-                orientation="vertical",
-                size_hint=(0.5, 1),
-                padding="10dp",
-                elevation=3,
-                radius=[10, 10, 10, 10]
-            )
-
-            heatmap_card.add_widget(MDLabel(
-                text="Attendance Heatmap",
-                halign="center",
-                size_hint_y=None,
-                height=dp(30),
-                font_style="H6"
-            ))
-
-            heatmap_card.add_widget(heatmap_chart)
-            graphs_row.add_widget(heatmap_card)
-
-            # graphs_row.add_widget(heatmap_chart)
-
-        
-        graphs_layout.add_widget(graphs_row)
-        
-        # Create another row for additional charts
-        graphs_row2 = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(300),
-            padding="10dp",
-            spacing="10dp"
-        )
-        
-        trend_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(350),
-            elevation=3,
-            radius=[10, 10, 10, 10],
-            padding="10dp"
-        )
-        
-        trend_card.add_widget(MDLabel(
-            text="Attendance Trend Over Time",
-            halign="center",
-            size_hint_y=None,
-            height=dp(30),
-            font_style="H6"
-        ))
-        
-        # Get attendance trend data
-        trend_query = """
-            SELECT date, 
-                SUM(CASE WHEN attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-                COUNT(*) as total_count
-            FROM attendance a
-        """
-        trend_params = []
-        
-        if where_clauses:
-            trend_query += " WHERE " + " AND ".join(where_clauses)
-            trend_params = params.copy()
-        
-        trend_query += " GROUP BY date ORDER BY date"
-        cursor.execute(trend_query, trend_params)
-        trend_data = cursor.fetchall()
-        
-        if trend_data:
-            dates = [row[0].strftime("%Y-%m-%d") for row in trend_data]
-            present_counts = [row[1] for row in trend_data]
-            total_counts = [row[2] for row in trend_data]
-            attendance_rates = [present/total*100 if total > 0 else 0 for present, total in zip(present_counts, total_counts)]
-            
-            # Plotting with rolling average for trend visibility
-            plt.figure(figsize=(10, 4), facecolor='#f0f0f0')
-            plt.plot(dates, attendance_rates, 'o-', color='#3366cc', linewidth=1, markersize=4, alpha=0.7, label='Daily Rate')
-            
-            # Add 7-day moving average if we have enough data
-            if len(dates) > 7:
-                moving_avg = pd.Series(attendance_rates).rolling(window=7).mean().tolist()
-                plt.plot(dates, moving_avg, '-', color='#cc3366', linewidth=2.5, label='7-Day Average')
-            
-            plt.title("Attendance Rate Trend", fontsize=14, pad=15)
-            plt.ylabel("Attendance Rate (%)", fontsize=12)
-            plt.grid(True, linestyle='--', alpha=0.7)
-            # plt.xticks(rotation=45)
-            plt.xticks(rotation=45, ha='right')
-            plt.gca().xaxis.set_major_locator(plt.MaxNLocator(nbins=10))
-            plt.ylim(0, 105)
-            plt.legend(frameon=True, fancybox=True, shadow=True)
-            plt.tight_layout()
-            
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-            buffer.seek(0)
-            trend_texture = CoreImage(buffer, ext='png').texture
-            plt.close()
-            
-            trend_chart = Image(
-                texture=trend_texture,
-                size_hint=(1, 1),
-                allow_stretch=True,
-                keep_ratio=True
-            )
-            trend_card.add_widget(trend_chart)
-            graphs_layout.add_widget(trend_card)
-
-        # Weekday analysis for all students
-        weekday_query = """
-            SELECT DAYNAME(date) as weekday, 
-                SUM(CASE WHEN attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-                COUNT(*) as total_count
-            FROM attendance a
-        """
-        weekday_params = []
-        
-        if where_clauses:
-            weekday_query += " WHERE " + " AND ".join(where_clauses)
-            weekday_params = params.copy()
-        
-        weekday_query += " GROUP BY weekday ORDER BY FIELD(weekday, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')"
-        
-        try:
-            cursor.execute(weekday_query, weekday_params)
-            weekday_data = cursor.fetchall()
-            
-            if weekday_data:
-                weekdays = [row[0] for row in weekday_data]
-                present_counts = [row[1] for row in weekday_data]
-                total_counts = [row[2] for row in weekday_data]
-                
-                plt.figure(figsize=(6, 4))
-                
-                # Create positions for grouped bars
-                x = np.arange(len(weekdays))
-                width = 0.35
-                
-                fig, ax = plt.subplots(figsize=(8, 4))
-                ax.bar(x - width/2, present_counts, width, label='Present')
-                ax.bar(x + width/2, [total-present for total, present in zip(total_counts, present_counts)], width, label='Absent')
-                
-                ax.set_title('Attendance by Day of Week')
-                ax.set_xlabel('Weekday')
-                ax.set_ylabel('Count')
-                ax.set_xticks(x)
-                ax.set_xticklabels(weekdays, rotation=45, ha='right')
-                ax.legend()
-                
-                plt.tight_layout()
-                
-                buffer = BytesIO()
-                plt.savefig(buffer, format='png', bbox_inches='tight')
-                buffer.seek(0)
-                weekday_texture = CoreImage(buffer, ext='png').texture
-                plt.close()
-                
-                weekday_chart = Image(
-                    texture=weekday_texture,
-                    size_hint=(1, 1),
-                    allow_stretch=True,
-                    keep_ratio=True
-                )
-                weekday_card = MDCard(
-                    orientation="vertical",
-                    size_hint=(1, 1),
-                    # size_hint_y=None,
-                    height=dp(350),
-                    padding="10dp",
-                    spacing="10dp",
-                    elevation=3,
-                    radius=[10, 10, 10, 10]
-                )
-                weekday_card.add_widget(MDLabel(
-                    text="Attendance by Day of Week",
-                    halign="center",
-                    size_hint_y=None,
-                    height=dp(30),
-                    font_style="H6"
-                ))
-                weekday_card.add_widget(weekday_chart)
-                graphs_row2.add_widget(weekday_card)
-        except mysql.connector.Error as err:
-            print(f"Error generating weekday analysis: {err}")
-        
-        graphs_layout.add_widget(graphs_row2)
-        self._add_daily_comparison(cursor, where_clauses, params, graphs_layout)
-        self._add_roll_number_distribution(cursor, where_clauses, params, graphs_layout)
-
-    def _add_daily_comparison(self, cursor, where_clauses, params, graphs_layout):
-        """Add chart showing daily attendance comparison"""
-        
-        # Create card for daily comparison
-        daily_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(350),
-            elevation=3,
-            radius=[10, 10, 10, 10],
-            padding="10dp"
-        )
-        
-        daily_card.add_widget(MDLabel(
-            text="Last 10 Days Attendance",
-            halign="center",
-            size_hint_y=None,
-            height=dp(30),
-            font_style="H6"
-        ))
-        
-        # Get daily attendance for last 10 days
-        daily_query = """
-            SELECT date, 
-                SUM(CASE WHEN attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-                COUNT(*) as total_count
-            FROM attendance a
-        """
-        daily_params = []
-        
-        if where_clauses:
-            daily_query += " WHERE " + " AND ".join(where_clauses)
-            daily_params = params.copy()
-        
-        daily_query += " GROUP BY date ORDER BY date DESC LIMIT 10"
-        
-        cursor.execute(daily_query, daily_params)
-        daily_data = cursor.fetchall()
-        
-        if daily_data and len(daily_data) > 0:
-            # Reverse to show in chronological order
-            daily_data.reverse()
-            
-            dates = [row[0].strftime("%m/%d") for row in daily_data]
-            present_counts = [row[1] for row in daily_data]
-            total_counts = [row[2] for row in daily_data]
-            attendance_rates = [present/total*100 if total > 0 else 0 for present, total in zip(present_counts, total_counts)]
-            
-            plt.figure(figsize=(10, 4), facecolor='#f0f0f0')
-            
-            # Bar chart with two bars per day - present and absent
-            x = np.arange(len(dates))
-            width = 0.35
-            
-            ax = plt.subplot(111)
-            present_bars = ax.bar(x - width/2, present_counts, width, label='Present', color='#4CAF50')
-            absent_bars = ax.bar(x + width/2, [t-p for t,p in zip(total_counts, present_counts)], width, label='Absent', color='#F44336')
-            
-            # Add total count as text above bars
-            for i, (p, t) in enumerate(zip(present_counts, total_counts)):
-                plt.text(i, t + 1, f'Total: {t}', ha='center', fontsize=9)
-                
-            # Add present percentage inside present bars if there's room
-            for i, (p, t) in enumerate(zip(present_counts, total_counts)):
-                if p > 3:  # Only if there's room
-                    plt.text(i - width/2, p/2, f'{p/t*100:.0f}%', ha='center', va='center', color='white', fontsize=9, fontweight='bold')
-            
-            plt.title('Daily Attendance Comparison', fontsize=14, pad=15)
-            plt.xlabel('Date', fontsize=12)
-            plt.ylabel('Student Count', fontsize=12)
-            plt.xticks(x, dates)
-            plt.legend(frameon=True)
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            # Add a second y-axis for percentage
-            ax2 = ax.twinx()
-            ax2.plot(x, attendance_rates, 'o-', color='#FF9800', linewidth=2, label='Rate %')
-            ax2.set_ylabel('Attendance Rate (%)', color='#FF9800', fontsize=12)
-            ax2.tick_params(axis='y', labelcolor='#FF9800')
-            ax2.set_ylim(0, 110)
-            
-            # Add the percentage line to the legend
-            lines, labels = ax.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax.legend(lines + lines2, labels + labels2, loc='upper right', frameon=True)
-            
-            plt.tight_layout()
-            
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-            buffer.seek(0)
-            daily_texture = CoreImage(buffer, ext='png').texture
-            plt.close()
-            
-            daily_chart = Image(
-                texture=daily_texture,
-                size_hint=(1, 1),
-                allow_stretch=True,
-                keep_ratio=True
-            )
-            daily_card.add_widget(daily_chart)
-        else:
-            daily_card.add_widget(MDLabel(
-                text="Not enough data available for daily comparison",
-                halign="center"
-            ))
-        
-        graphs_layout.add_widget(daily_card)
-
-    def _add_class_summary_card(self, cursor, where_clauses, params, graphs_layout):
-        """Add a card showing class attendance summary"""
-        
-        # Create card for class summary
-        class_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(180),
-            elevation=3,
-            radius=[10, 10, 10, 10],
-            padding="15dp"
-        )
-        
-        # Query to get summary statistics
-        query = """
-            SELECT 
-                COUNT(DISTINCT a.roll_no) as students_present,
-                (SELECT COUNT(*) FROM student_info) as total_students,
-                COUNT(DISTINCT a.date) as days_tracked,
-                SUM(CASE WHEN a.attendance = 'P' THEN 1 ELSE 0 END) as total_present,
-                COUNT(*) as total_records
-            FROM attendance a
-        """
-        
-        params_copy = []
-        if where_clauses:
-            query += " WHERE " + " AND ".join(where_clauses)
-            params_copy = params.copy()
-        
-        cursor.execute(query, params_copy)
-        result = cursor.fetchone()
-        
-        if result:
-            students_present, total_students, days_tracked, total_present, total_records = result
-            attendance_rate = (total_present / total_records * 100) if total_records > 0 else 0
-            student_coverage = (students_present / total_students * 100) if total_students > 0 else 0
-            
-            # Create title
-            class_card.add_widget(MDLabel(
-                text="Class Summary",
-                halign="center",
-                size_hint_y=None,
-                height=dp(30),
-                font_style="H6"
-            ))
-            
-            # Create horizontal layout for stats
-            stats_layout = MDBoxLayout(
-                orientation="horizontal",
-                size_hint_y=None,
-                height=dp(120),
-                spacing="15dp"
-            )
-            
-            # Create four stat boxes
-            stat_data = [
-                {"icon": "calendar-range", "value": f"{days_tracked}", "label": "Days Tracked", "color": (0.3, 0.6, 0.9, 1)},
-                {"icon": "account-group", "value": f"{students_present}/{total_students}", "label": "Students Covered", "color": (0.2, 0.7, 0.3, 1)},
-                {"icon": "percent", "value": f"{attendance_rate:.1f}%", "label": "Attendance Rate", "color": (0.9, 0.6, 0.2, 1)},
-                {"icon": "account-check", "value": f"{student_coverage:.1f}%", "label": "Student Coverage", "color": (0.6, 0.4, 0.8, 1)}
-            ]
-            
-            for stat in stat_data:
-                stat_box = MDBoxLayout(
-                    orientation="vertical",
-                    size_hint_x=0.25,
-                    padding="5dp"
-                )
-                
-                # Icon
-                icon_box = MDBoxLayout(
-                    size_hint=(None, None),
-                    size=(dp(30), dp(30)),
-                    pos_hint={"center_x": 0.5}
-                )
-                icon_box.add_widget(MDIconButton(
-                    icon=stat["icon"],
-                    theme_text_color="Custom",
-                    text_color=stat["color"],
-                    icon_size=dp(30),
-                    pos_hint={"center_x": 0.5, "center_y": 0.5}
-                ))
-                stat_box.add_widget(icon_box)
-                
-                # Value
-                stat_box.add_widget(MDLabel(
-                    text=stat["value"],
-                    halign="center",
-                    theme_text_color="Custom",
-                    text_color=stat["color"],
-                    font_style="H6"
-                ))
-                
-                # Label
-                stat_box.add_widget(MDLabel(
-                    text=stat["label"],
-                    halign="center",
-                    theme_text_color="Secondary",
-                    font_style="Caption"
-                ))
-                
-                stats_layout.add_widget(stat_box)
-            
-            class_card.add_widget(stats_layout)
-            graphs_layout.add_widget(class_card)
-
-    def _add_roll_number_distribution(self, cursor, where_clauses, params, graphs_layout):
-        """Add chart showing attendance distribution by roll number ranges"""
-        
-        # Create card for roll range distribution
-        roll_card = MDCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=dp(350),
-            elevation=3,
-            radius=[10, 10, 10, 10],
-            padding="10dp"
-        )
-        
-        roll_card.add_widget(MDLabel(
-            text="Attendance by Roll Number Groups",
-            halign="center",
-            size_hint_y=None,
-            height=dp(30),
-            font_style="H6"
-        ))
-        
-        # Get min and max roll numbers
-        range_query = "SELECT MIN(roll_no), MAX(roll_no) FROM student_info"
-        cursor.execute(range_query)
-        min_roll, max_roll = cursor.fetchone()
-        
-        if min_roll is None or max_roll is None:
-            roll_card.add_widget(MDLabel(
-                text="No student data available",
-                halign="center"
-            ))
-            graphs_layout.add_widget(roll_card)
-            return
-        
-        # Create roll number ranges (e.g., groups of 10)
-        group_size = 10
-        ranges = [(i, min(i+group_size-1, max_roll)) for i in range(min_roll, max_roll+1, group_size)]
-        
-        # Get attendance data by roll number ranges
-        results = []
-        
-        for start, end in ranges:
-            query = """
-                SELECT 
-                    COUNT(DISTINCT a.roll_no) as student_count,
-                    SUM(CASE WHEN a.attendance = 'P' THEN 1 ELSE 0 END) as present_count,
-                    COUNT(*) as total_count
-                FROM attendance a
-                WHERE a.roll_no BETWEEN %s AND %s
-            """
-            params = [start, end]
-            
-            if where_clauses:
-                query += " AND " + " AND ".join(where_clauses)
-                params.extend(params)
-            
-            cursor.execute(query, params)
-            row = cursor.fetchone()
-            
-            if row and row[0] > 0:  # If there are students in this range
-                results.append((f"{start}-{end}", row[0], row[1], row[2]))
-        
-        if results:
-            # Prepare data for plotting
-            ranges = [r[0] for r in results]
-            student_counts = [r[1] for r in results]
-            attendance_rates = [r[2]/r[3]*100 if r[3] > 0 else 0 for r in results]
-            
-            # Create figure with two subplots
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4), facecolor='#f0f0f0')
-            
-            # Student count by range
-            bars1 = ax1.bar(ranges, student_counts, color='#5588bb')
-            ax1.set_title('Student Count by Roll Number Range')
-            ax1.set_xlabel('Roll Number Range')
-            ax1.set_ylabel('Number of Students')
-            ax1.tick_params(axis='x', rotation=45)
-            ax1.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            # Add count labels
-            for bar in bars1:
-                height = bar.get_height()
-                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.1, 
-                        f'{int(height)}', ha='center', va='bottom', fontsize=9)
-            
-            # Attendance rate by range
-            bars2 = ax2.bar(ranges, attendance_rates, color='#66aa66')
-            ax2.set_title('Attendance Rate by Roll Number Range')
-            ax2.set_xlabel('Roll Number Range')
-            ax2.set_ylabel('Attendance Rate (%)')
-            ax2.tick_params(axis='x', rotation=45)
-            ax2.set_ylim(0, 105)
-            ax2.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            # Add percentage labels
-            for bar in bars2:
-                height = bar.get_height()
-                ax2.text(bar.get_x() + bar.get_width()/2., height + 1, 
-                        f'{height:.1f}%', ha='center', va='bottom', fontsize=9)
-            
-            plt.tight_layout()
-            
-            # Save plot to buffer
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
-            buffer.seek(0)
-            roll_texture = CoreImage(buffer, ext='png').texture
-            plt.close()
-            
-            # Add plot to card
-            roll_chart = Image(
-                texture=roll_texture,
-                size_hint=(1, 1),
-                allow_stretch=True,
-                keep_ratio=True
-            )
-            roll_card.add_widget(roll_chart)
-        
-        graphs_layout.add_widget(roll_card)
-
-    def _add_attendance_data_table(self, cursor, where_clauses, params, graphs_layout):
-        """Add data table to dashboard"""
-        data_query = """
-            SELECT a.roll_no, s.name, a.date, a.attendance as status 
-            FROM attendance a
-            JOIN student_info s ON a.roll_no = s.roll_no
-        """
-        data_params = []
-        
-        if where_clauses:
-            data_query += " WHERE " + " AND ".join(where_clauses)
-            data_params = params.copy()
-            
-        data_query += " ORDER BY a.date DESC, a.roll_no ASC"
-        
-        cursor.execute(data_query, data_params)
-        data = cursor.fetchall()
-
-        if data:
-            table_card = MDCard(
-                orientation="vertical",
-                padding="10dp",
-                size_hint=(1, None),
-                height=dp(400),
-                elevation=2,
-                radius=[12, 12, 12, 12],
-            )
-
-            # Properly centered label
-            title_label = MDLabel(
-                text="Recent Attendance Records",
-                font_style="H5",
-                halign="center",
-                valign="middle",
-                size_hint_y=None,
-                height=dp(40)
-            )
-            title_label.bind(size=title_label.setter("text_size"))  # Ensures vertical alignment too
-            table_card.add_widget(title_label)
-
-            # Data Table
-            data_table = MDDataTable(
-                size_hint=(1, None),
-                height=dp(300),
-                use_pagination=True,
-                rows_num=10,
-                column_data=[
-                    ("Roll No", dp(30)),
-                    ("Name", dp(40)),
-                    ("Date", dp(30)),
-                    ("Status", dp(20))
-                ],
-                row_data=data,
-                sorted_on="Date",
-                sorted_order="DSC",
-                elevation=0
-            )
-            table_card.add_widget(data_table)
-
-            graphs_layout.add_widget(table_card)
+        about_dialog.open()
 
 
 if __name__ == '__main__':
-    # Window.size = (1200, 800)
-    FaceRecognitionApp().run()
+    CognitoAIApp().run()
